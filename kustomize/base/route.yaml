@@ -1,0 +1,16 @@
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: superset-mcp
+  labels:
+    app: superset-mcp
+spec:
+  to:
+    kind: Service
+    name: superset-mcp
+  port:
+    targetPort: 5008
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

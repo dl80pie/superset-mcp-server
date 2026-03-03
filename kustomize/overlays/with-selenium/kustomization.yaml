@@ -1,0 +1,33 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: superset-mcp-with-selenium
+
+bases:
+  - ../../base
+
+patchesStrategicMerge:
+  - deployment-patch.yaml
+
+commonLabels:
+  app.kubernetes.io/instance: superset-mcp-with-selenium
+  app.kubernetes.io/environment: with-selenium
+
+commonAnnotations:
+  app.kubernetes.io/variant: "with-selenium"
+  app.kubernetes.io/screenshots: "enabled"
+
+replicas:
+  - name: superset-mcp
+    count: 2
+
+patches:
+  - target:
+      kind: HorizontalPodAutoscaler
+      name: superset-mcp-hpa
+    patch: |-
+      - op: replace
+        path: /spec/maxReplicas
+        value: 4

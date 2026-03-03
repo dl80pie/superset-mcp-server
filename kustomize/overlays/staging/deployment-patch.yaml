@@ -1,0 +1,35 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: superset-mcp
+spec:
+  template:
+    metadata:
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "5008"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+        - name: mcp-service
+          env:
+            - name: WEBDRIVER_TYPE
+              value: "chrome"
+            - name: MCP_SCREENSHOTS_ENABLED
+              value: "true"
+            - name: MCP_LOG_LEVEL
+              value: "INFO"
+          resources:
+            requests:
+              cpu: 300m
+              memory: 768Mi
+            limits:
+              cpu: 1500m
+              memory: 1.5Gi
+          livenessProbe:
+            initialDelaySeconds: 30
+            timeoutSeconds: 10
+          readinessProbe:
+            initialDelaySeconds: 20
+            timeoutSeconds: 8

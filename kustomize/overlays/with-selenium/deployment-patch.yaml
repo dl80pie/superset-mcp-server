@@ -1,0 +1,41 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: superset-mcp
+spec:
+  template:
+    spec:
+      containers:
+        - name: mcp-service
+          env:
+            - name: WEBDRIVER_TYPE
+              value: "chrome"
+            - name: MCP_SCREENSHOTS_ENABLED
+              value: "true"
+            - name: WEBDRIVER_OPTION_ARGS
+              value: "--headless,--no-sandbox,--disable-dev-shm-usage,--disable-gpu"
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: 2000m
+              memory: 2Gi
+          livenessProbe:
+            initialDelaySeconds: 45
+            timeoutSeconds: 15
+          readinessProbe:
+            initialDelaySeconds: 30
+            timeoutSeconds: 10
+          volumeMounts:
+            - name: tmp-volume
+              mountPath: /tmp
+            - name: dev-shm
+              mountPath: /dev/shm
+      volumes:
+        - name: tmp-volume
+          emptyDir: {}
+        - name: dev-shm
+          emptyDir:
+            medium: Memory

@@ -1,0 +1,75 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: superset-mcp
+spec:
+  template:
+    metadata:
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "5008"
+        prometheus.io/path: "/metrics"
+        app.kubernetes.io/security: "hardened"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: mcp-service
+          env:
+            - name: WEBDRIVER_TYPE
+              value: "chrome"
+            - name: MCP_SCREENSHOTS_ENABLED
+              value: "true"
+            - name: WEBDRIVER_OPTION_ARGS
+              value: "--headless,--no-sandbox,--disable-dev-shm-usage,--disable-gpu"
+            - name: MCP_LOG_LEVEL
+              value: "INFO"
+            - name: MCP_AUDIT_ENABLED
+              value: "true"
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: 2000m
+              memory: 2Gi
+          livenessProbe:
+            initialDelaySeconds: 45
+            timeoutSeconds: 15
+            failureThreshold: 3
+            periodSeconds: 15
+          readinessProbe:
+            initialDelaySeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+            periodSeconds: 10
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 5008
+            initialDelaySeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 30
+            periodSeconds: 5
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: tmp-volume
+              mountPath: /tmp
+            - name: dev-shm
+              mountPath: /dev/shm
+      volumes:
+        - name: tmp-volume
+          emptyDir: {}
+        - name: dev-shm
+          emptyDir:
+            medium: Memory

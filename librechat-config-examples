@@ -1,0 +1,539 @@
+# LibreChat Konfigurationsbeispiele für Superset MCP Service
+
+## 📁 Beispiel 1: Basic Environment Configuration
+
+```env
+# librechat/.env
+# Basic Superset MCP Integration
+
+# Superset MCP Service Settings
+SUPerset_MCP_ENABLED=true
+SUPerset_MCP_URL=https://superset-mcp-your.apps.cluster.example.com
+SUPerset_MCP_USERNAME=admin
+SUPerset_MCP_PASSWORD=your-secure-password
+SUPerset_MCP_TIMEOUT=30000
+
+# LibreChat MCP Settings
+ENABLE_MCP_TOOLS=true
+MCP_SERVICE_TIMEOUT=30000
+MCP_RETRY_ATTEMPTS=2
+
+# Optional: Screenshots (nur mit Full-Version)
+# SUPerset_MCP_SCREENSHOTS=true
+```
+
+## 📁 Beispiel 2: Advanced Configuration mit Screenshots
+
+```env
+# librechat/.env
+# Advanced Superset MCP Integration mit Screenshots
+
+# Superset MCP Service Settings
+SUPerset_MCP_ENABLED=true
+SUPerset_MCP_URL=https://superset-mcp-your.apps.cluster.example.com
+SUPerset_MCP_USERNAME=admin
+SUPerset_MCP_PASSWORD=your-secure-password
+SUPerset_MCP_TIMEOUT=60000
+
+# Screenshots & Visualization
+SUPerset_MCP_SCREENSHOTS=true
+SUPerset_MCP_WEBDRIVER_TYPE=chrome
+SUPerset_MCP_SCREENSHOT_TIMEOUT=45000
+
+# LibreChat Advanced Settings
+ENABLE_MCP_TOOLS=true
+ENABLE_MCP_SCREENSHOTS=true
+MCP_SERVICE_TIMEOUT=60000
+MCP_POOL_SIZE=3
+MCP_RETRY_ATTEMPTS=3
+
+# Performance
+LIBRECHAT_CONCURRENT_REQUESTS=5
+ENABLE_MCP_CACHE=true
+MCP_CACHE_TTL=300
+
+# Security
+SUPerset_MCP_VERIFY_SSL=true
+MCP_ALLOWED_HOSTS=superset-mcp-your.apps.cluster.example.com
+```
+
+## 📁 Beispiel 3: Minimal Configuration (ohne Screenshots)
+
+```env
+# librechat/.env
+# Minimal Superset MCP Integration (ohne Screenshots)
+
+# Superset MCP Service Settings
+SUPerset_MCP_ENABLED=true
+SUPerset_MCP_URL=https://superset-mcp-minimal.apps.cluster.example.com
+SUPerset_MCP_USERNAME=admin
+SUPerset_MCP_TIMEOUT=30000
+
+# LibreChat MCP Settings
+ENABLE_MCP_TOOLS=true
+MCP_SERVICE_TIMEOUT=30000
+
+# Screenshots deaktiviert
+SUPerset_MCP_SCREENSHOTS=false
+```
+
+## 📁 Beispiel 4: Multi-User Configuration
+
+```json
+{
+  "librechat_config": {
+    "mcp_services": {
+      "superset": {
+        "name": "Apache Superset",
+        "url": "https://superset-mcp.apps.cluster.example.com",
+        "enabled": true,
+        "auth": {
+          "type": "basic",
+          "username": "admin",
+          "password": "${SUPERSET_PASSWORD}"
+        },
+        "timeout": 30000,
+        "user_permissions": {
+          "admin": {
+            "allowed_tools": ["*"],
+            "sql_execution": true,
+            "chart_creation": true
+          },
+          "analyst": {
+            "allowed_tools": [
+              "list_charts",
+              "get_chart_info", 
+              "list_dashboards",
+              "execute_sql",
+              "list_datasets"
+            ],
+            "sql_execution": true,
+            "chart_creation": false
+          },
+          "viewer": {
+            "allowed_tools": [
+              "list_charts",
+              "get_chart_info",
+              "list_dashboards"
+            ],
+            "sql_execution": false,
+            "chart_creation": false
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+## 📁 Beispiel 5: Docker Compose Integration
+
+```yaml
+# docker-compose.librechat.yml
+version: '3.8'
+
+services:
+  librechat-app:
+    image: ghcr.io/librechat/librechat:latest
+    ports:
+      - "3080:3080"
+    environment:
+      # Superset MCP Integration
+      - SUPerset_MCP_ENABLED=true
+      - SUPerset_MCP_URL=https://superset-mcp.apps.cluster.example.com
+      - SUPerset_MCP_USERNAME=admin
+      - SUPerset_MCP_PASSWORD=${SUPERSET_PASSWORD}
+      - SUPerset_MCP_TIMEOUT=30000
+      
+      # LibreChat Settings
+      - ENABLE_MCP_TOOLS=true
+      - MCP_SERVICE_TIMEOUT=30000
+      
+      # Database (Beispiel)
+      - MONGODB_URI=mongodb://mongo:27017/librechat
+      - ME_CONFIG_MONGODB_URL=mongodb://mongo:27017/librechat
+    depends_on:
+      - mongo
+    networks:
+      - librechat-network
+
+  mongo:
+    image: mongo:latest
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - librechat-network
+
+volumes:
+  mongo_data:
+
+networks:
+  librechat-network:
+    driver: bridge
+```
+
+## 📁 Beispiel 6: Kubernetes Deployment
+
+```yaml
+# librechat-k8s.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: librechat
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: librechat
+  template:
+    metadata:
+      labels:
+        app: librechat
+    spec:
+      containers:
+        - name: librechat
+          image: ghcr.io/librechat/librechat:latest
+          ports:
+            - containerPort: 3080
+          env:
+            - name: SUPerset_MCP_ENABLED
+              value: "true"
+            - name: SUPerset_MCP_URL
+              value: "https://superset-mcp.apps.cluster.example.com"
+            - name: SUPerset_MCP_USERNAME
+              value: "admin"
+            - name: SUPerset_MCP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: librechat-secrets
+                  key: superset-password
+            - name: ENABLE_MCP_TOOLS
+              value: "true"
+            - name: MCP_SERVICE_TIMEOUT
+              value: "30000"
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: librechat
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 80
+      targetPort: 3080
+  selector:
+    app: librechat
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: librechat-secrets
+type: Opaque
+stringData:
+  superset-password: "your-secure-password"
+```
+
+## 📁 Beispiel 7: Tool Mapping Configuration
+
+```json
+{
+  "tool_mappings": {
+    "superset": {
+      "list_charts": {
+        "display_name": "Charts auflisten",
+        "description": "Zeigt alle verfügbaren Charts in Superset",
+        "category": "Discovery",
+        "icon": "📊",
+        "examples": [
+          "Zeig mir alle Charts",
+          "Welche Charts sind verfügbar?",
+          "Liste alle Visualisierungen auf"
+        ]
+      },
+      "get_chart_info": {
+        "display_name": "Chart Details",
+        "description": "Zeigt detaillierte Informationen zu einem spezifischen Chart",
+        "category": "Discovery",
+        "icon": "📈",
+        "examples": [
+          "Zeig mir Details zu Chart 123",
+          "Was ist in diesem Chart enthalten?",
+          "Beschreibe den Sales Chart"
+        ]
+      },
+      "execute_sql": {
+        "display_name": "SQL ausführen",
+        "description": "Führt SQL Abfragen in der Datenbank aus",
+        "category": "Data Analysis",
+        "icon": "🗃️",
+        "requires_approval": true,
+        "examples": [
+          "Zähle alle Benutzer",
+          "Zeig mir die Top 10 Produkte",
+          "Berechne den Umsatz nach Monat"
+        ]
+      },
+      "get_chart_preview": {
+        "display_name": "Chart Vorschau",
+        "description": "Generiert eine visuelle Vorschau des Charts",
+        "category": "Visualization",
+        "icon": "🖼️",
+        "requires_screenshots": true,
+        "examples": [
+          "Zeig mir eine Vorschau",
+          "Wie sieht der Chart aus?",
+          "Generiere ein Bild vom Chart"
+        ]
+      }
+    }
+  }
+}
+```
+
+## 📁 Beispiel 8: Custom Prompts
+
+```json
+{
+  "custom_prompts": {
+    "superset_discovery": {
+      "name": "Superset Daten-Discovery",
+      "prompt": "Ich helfe Ihnen bei der Erkundung Ihrer Daten in Superset. Ich kann Charts, Dashboards und Datasets für Sie auflisten und analysieren. Womit möchten Sie beginnen?",
+      "suggested_questions": [
+        "Zeig mir alle verfügbaren Dashboards",
+        "Welche Datenquellen sind vorhanden?",
+        "Gib mir eine Übersicht der Charts"
+      ]
+    },
+    "superset_analysis": {
+      "name": "Superset Datenanalyse",
+      "prompt": "Ich kann SQL Abfragen für Sie ausführen und Daten analysieren. Welche Analyse möchten Sie durchführen?",
+      "suggested_questions": [
+        "Führe eine Abfrage für die Verkaufszahlen aus",
+        "Analysiere die Kundendaten",
+        "Zeig mir Trends aus den letzten Monaten"
+      ]
+    },
+    "superset_visualization": {
+      "name": "Superset Visualisierung",
+      "prompt": "Ich kann neue Charts erstellen und bestehende visualisieren. Welche Visualisierung benötigen Sie?",
+      "suggested_questions": [
+        "Erstelle einen Bar Chart für die Verkäufe",
+        "Zeig mir eine Vorschau des Dashboards",
+        "Generiere ein Liniendiagramm für Trends"
+      ]
+    }
+  }
+}
+```
+
+## 📁 Beispiel 9: Monitoring Configuration
+
+```yaml
+# librechat-monitoring.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: librechat-monitoring
+data:
+  monitoring.yml: |
+    # LibreChat + Superset MCP Monitoring
+    metrics:
+      enabled: true
+      port: 9090
+      
+    health_checks:
+      librechat:
+        url: "http://localhost:3080/health"
+        interval: 30s
+        timeout: 10s
+        
+      superset_mcp:
+        url: "https://superset-mcp.apps.cluster.example.com/health"
+        interval: 60s
+        timeout: 15s
+        
+    logging:
+      level: info
+      mcp_requests: true
+      sql_queries: true
+      chart_operations: true
+      
+    alerts:
+      - name: "MCP Service Down"
+        condition: "superset_mcp_health == false"
+        action: "notify_admin"
+        
+      - name: "High SQL Query Time"
+        condition: "sql_query_duration > 30s"
+        action: "log_warning"
+```
+
+## 📁 Beispiel 10: Development Setup
+
+```bash
+#!/bin/bash
+# setup-librechat-dev.sh
+
+# LibreChat Development Setup mit Superset MCP
+
+echo "🚀 LibreChat Dev Setup mit Superset MCP..."
+
+# 1. LibreChat klonen
+git clone https://github.com/librechat/librechat.git
+cd librechat
+
+# 2. Dependencies installieren
+npm install
+
+# 3. Environment Datei erstellen
+cat > .env << EOF
+# Development Configuration
+NODE_ENV=development
+PORT=3080
+
+# Superset MCP Development
+SUPerset_MCP_ENABLED=true
+SUPerset_MCP_URL=http://localhost:5008
+SUPerset_MCP_USERNAME=admin
+SUPerset_MCP_PASSWORD=admin
+SUPerset_MCP_TIMEOUT=30000
+
+# MCP Settings
+ENABLE_MCP_TOOLS=true
+MCP_SERVICE_TIMEOUT=30000
+MCP_RETRY_ATTEMPTS=2
+
+# Development Database
+MONGODB_URI=mongodb://localhost:27017/librechat-dev
+ME_CONFIG_MONGODB_URL=mongodb://localhost:27017/librechat-dev
+EOF
+
+# 4. MongoDB starten (falls nicht vorhanden)
+docker run -d --name librechat-mongo -p 27017:27017 mongo:latest
+
+# 5. LibreChat starten
+npm run dev
+
+echo "✅ LibreChat läuft auf http://localhost:3080"
+echo "🔗 Superset MCP sollte auf http://localhost:5008 laufen"
+```
+
+## 📁 Beispiel 11: Production Deployment Script
+
+```bash
+#!/bin/bash
+# deploy-librechat-production.sh
+
+set -e
+
+echo "🚀 LibreChat Production Deployment mit Superset MCP..."
+
+# Environment Variablen
+export SUPerset_MCP_URL="https://superset-mcp.apps.cluster.example.com"
+export SUPerset_MCP_PASSWORD="${SUPERSET_PASSWORD}"
+export NODE_ENV="production"
+
+# 1. Docker Image bauen
+docker build -t librechat:prod .
+
+# 2. Security Scan
+docker scan librechat:prod
+
+# 3. Production Container starten
+docker run -d \
+  --name librechat-prod \
+  --restart unless-stopped \
+  -p 3080:3080 \
+  -e SUPerset_MCP_ENABLED=true \
+  -e SUPerset_MCP_URL="${SUPerset_MCP_URL}" \
+  -e SUPerset_MCP_USERNAME=admin \
+  -e SUPerset_MCP_PASSWORD="${SUPerset_MCP_PASSWORD}" \
+  -e ENABLE_MCP_TOOLS=true \
+  -e MCP_SERVICE_TIMEOUT=30000 \
+  -e NODE_ENV=production \
+  librechat:prod
+
+# 4. Health Check
+sleep 10
+curl -f http://localhost:3080/health || exit 1
+
+echo "✅ LibreChat Production deployed!"
+echo "🌐 Available at: http://localhost:3080"
+```
+
+## 📁 Beispiel 12: Test Suite
+
+```javascript
+// tests/superset-mcp-integration.test.js
+const request = require('supertest');
+const app = require('../app');
+
+describe('Superset MCP Integration', () => {
+  test('should list available charts', async () => {
+    const response = await request(app)
+      .post('/api/mcp/call')
+      .send({
+        service: 'superset',
+        method: 'tools/call',
+        params: {
+          name: 'list_charts',
+          arguments: {}
+        }
+      });
+    
+    expect(response.status).toBe(200);
+    expect(response.body.result).toHaveProperty('charts');
+  });
+
+  test('should execute SQL query', async () => {
+    const response = await request(app)
+      .post('/api/mcp/call')
+      .send({
+        service: 'superset',
+        method: 'tools/call',
+        params: {
+          name: 'execute_sql',
+          arguments: {
+            database_id: 1,
+            sql: 'SELECT COUNT(*) as total FROM users'
+          }
+        }
+      });
+    
+    expect(response.status).toBe(200);
+    expect(response.body.result).toHaveProperty('data');
+  });
+
+  test('should handle screenshot requests appropriately', async () => {
+    const response = await request(app)
+      .post('/api/mcp/call')
+      .send({
+        service: 'superset',
+        method: 'tools/call',
+        params: {
+          name: 'get_chart_preview',
+          arguments: {
+            identifier: '123'
+          }
+        }
+      });
+    
+    if (process.env.SUPerset_MCP_SCREENSHOTS === 'true') {
+      expect(response.status).toBe(200);
+      expect(response.body.result).toHaveProperty('preview_url');
+    } else {
+      expect(response.status).toBe(400);
+      expect(response.body.error).toContain('not available');
+    }
+  });
+});
+```

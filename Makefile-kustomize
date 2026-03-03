@@ -1,0 +1,223 @@
+# Superset MCP Service Kustomize Makefile
+
+.PHONY: help build deploy diff validate clean status
+
+# Default target
+help:
+	@echo "Superset MCP Service - Kustomize Deployment Management"
+	@echo ""
+	@echo "Available commands:"
+	@echo "  build <env>       - Build manifests for environment"
+	@echo "  deploy <env>      - Deploy to environment"
+	@echo "  diff <env>        - Show diff for environment"
+	@echo "  validate <env>    - Validate manifests for environment"
+	@echo "  clean <env>       - Clean deployment from environment"
+	@echo "  status <env>      - Show deployment status"
+	@echo "  help              - Show this help message"
+	@echo ""
+	@echo "Environments:"
+	@echo "  minimal           - Minimal deployment (no screenshots)"
+	@echo "  with-selenium     - Full deployment with screenshots"
+	@echo "  development       - Development environment"
+	@echo "  staging           - Staging environment"
+	@echo "  production        - Production environment"
+	@echo ""
+	@echo "Examples:"
+	@echo "  make build minimal"
+	@echo "  make deploy production"
+	@echo "  make diff staging"
+
+# Build manifests
+build:
+	@if [ -z "$(ENV)" ]; then echo "❌ Environment not specified. Usage: make build ENV=<environment>"; exit 1; fi
+	@echo "Building manifests for $(ENV) environment..."
+	@if [ ! -d "kustomize/overlays/$(ENV)" ]; then echo "❌ Environment '$(ENV)' not found"; exit 1; fi
+	kustomize build kustomize/overlays/$(ENV)
+	@echo "✅ Build completed for $(ENV)"
+
+# Deploy to environment
+deploy:
+	@if [ -z "$(ENV)" ]; then echo "❌ Environment not specified. Usage: make deploy ENV=<environment>"; exit 1; fi
+	@echo "Deploying to $(ENV) environment..."
+	@if [ ! -d "kustomize/overlays/$(ENV)" ]; then echo "❌ Environment '$(ENV)' not found"; exit 1; fi
+	kustomize build kustomize/overlays/$(ENV) | kubectl apply -f -
+	@echo "✅ Deployment completed for $(ENV)"
+	@echo "🔄 Waiting for rollout..."
+	kubectl rollout status deployment/superset-mcp --timeout=300s
+
+# Show diff
+diff:
+	@if [ -z "$(ENV)" ]; then echo "❌ Environment not specified. Usage: make diff ENV=<environment>"; exit 1; fi
+	@echo "Showing diff for $(ENV) environment..."
+	@if [ ! -d "kustomize/overlays/$(ENV)" ]; then echo "❌ Environment '$(ENV)' not found"; exit 1; fi
+	kustomize build kustomize/overlays/$(ENV) | kubectl diff -f -
+
+# Validate manifests
+validate:
+	@if [ -z "$(ENV)" ]; then echo "❌ Environment not specified. Usage: make validate ENV=<environment>"; exit 1; fi
+	@echo "Validating manifests for $(ENV) environment..."
+	@if [ ! -d "kustomize/overlays/$(ENV)" ]; then echo "❌ Environment '$(ENV)' not found"; exit 1; fi
+	kustomize build kustomize/overlays/$(ENV) --validate
+	@echo "✅ Validation passed for $(ENV)"
+
+# Clean deployment
+clean:
+	@if [ -z "$(ENV)" ]; then echo "❌ Environment not specified. Usage: make clean ENV=<environment>"; exit 1; fi
+	@echo "Cleaning $(ENV) deployment..."
+	kustomize build kustomize/overlays/$(ENV) | kubectl delete -f -
+	@echo "✅ Cleanup completed for $(ENV)"
+
+# Show status
+status:
+	@if [ -z "$(ENV)" ]; then echo "❌ Environment not specified. Usage: make status ENV=<environment>"; exit 1; fi
+	@echo "Status for $(ENV) environment:"
+	@echo ""
+	@echo "Pods:"
+	kubectl get pods -l app.kubernetes.io/instance=superset-mcp-$(ENV) -o wide
+	@echo ""
+	@echo "Services:"
+	kubectl get services -l app.kubernetes.io/instance=superset-mcp-$(ENV)
+	@echo ""
+	@echo "Routes:"
+	kubectl get routes -l app.kubernetes.io/instance=superset-mcp-$(ENV)
+	@echo ""
+	@echo "HPA:"
+	kubectl get hpa -l app.kubernetes.io/instance=superset-mcp-$(ENV)
+	@echo ""
+	@echo "Events:"
+	kubectl get events --field-selector involvedObject.name=superset-mcp --sort-by='.lastTimestamp' | tail -5
+
+# Quick deploy commands
+deploy-minimal:
+	@$(MAKE) build ENV=minimal
+	@$(MAKE) deploy ENV=minimal
+
+deploy-with-selenium:
+	@$(MAKE) build ENV=with-selenium
+	@$(MAKE) deploy ENV=with-selenium
+
+deploy-development:
+	@$(MAKE) build ENV=development
+	@$(MAKE) deploy ENV=development
+
+deploy-staging:
+	@$(MAKE) build ENV=staging
+	@$(MAKE) deploy ENV=staging
+
+deploy-production:
+	@$(MAKE) build ENV=production
+	@$(MAKE) deploy ENV=production
+
+# Build and save to file
+build-save:
+	@if [ -z "$(ENV)" ]; then echo "❌ Environment not specified. Usage: make build-save ENV=<environment>"; exit 1; fi
+	@if [ -z "$(FILE)" ]; then FILE="$(ENV)-manifests.yaml"; fi
+	@echo "Building and saving $(ENV) manifests to $(FILE)..."
+	kustomize build kustomize/overlays/$(ENV) -o yaml > $(FILE)
+	@echo "✅ Manifests saved to $(FILE)"
+
+# Dry-run deployment
+dry-run:
+	@if [ -z "$(ENV)" ]; then echo "❌ Environment not specified. Usage: make dry-run ENV=<environment>"; exit 1; fi
+	@echo "Dry-run deployment for $(ENV) environment..."
+	kustomize build kustomize/overlays/$(ENV) | kubectl apply --dry-run=client -f -
+
+# Scale deployment
+scale:
+	@if [ -z "$(ENV)" ]; then echo "❌ Environment not specified. Usage: make scale ENV=<environment> REPLICAS=<number>"; exit 1; fi
+	@if [ -z "$(REPLICAS)" ]; then echo "❌ Replicas not specified. Usage: make scale ENV=<environment> REPLICAS=<number>"; exit 1; fi
+	@echo "Scaling $(ENV) deployment to $(REPLICAS) replicas..."
+	kubectl scale deployment superset-mcp --replicas=$(REPLICAS)
+	kubectl rollout status deployment/superset-mcp --timeout=300s
+
+# Restart deployment
+restart:
+	@if [ -z "$(ENV)" ]; then echo "❌ Environment not specified. Usage: make restart ENV=<environment>"; exit 1; fi
+	@echo "Restarting $(ENV) deployment..."
+	kubectl rollout restart deployment/superset-mcp
+	kubectl rollout status deployment/superset-mcp --timeout=300s
+
+# Get logs
+logs:
+	@if [ -z "$(ENV)" ]; then echo "❌ Environment not specified. Usage: make logs ENV=<environment>"; exit 1; fi
+	@echo "Showing logs for $(ENV) environment..."
+	kubectl logs -l app.kubernetes.io/instance=superset-mcp-$(ENV) -f
+
+# Get shell access
+shell:
+	@if [ -z "$(ENV)" ]; then echo "❌ Environment not specified. Usage: make shell ENV=<environment>"; exit 1; fi
+	@echo "Getting shell access to $(ENV) pod..."
+	kubectl exec -it $$(kubectl get pods -l app.kubernetes.io/instance=superset-mcp-$(ENV) -o jsonpath='{.items[0].metadata.name}') -- /bin/bash
+
+# Health check
+health:
+	@if [ -z "$(ENV)" ]; then echo "❌ Environment not specified. Usage: make health ENV=<environment>"; exit 1; fi
+	@echo "Health check for $(ENV) environment..."
+	@echo "Pod Status:"
+	kubectl get pods -l app.kubernetes.io/instance=superset-mcp-$(ENV)
+	@echo ""
+	@echo "Service Health:"
+	kubectl get endpoints superset-mcp
+	@echo ""
+	@if kubectl get route superset-mcp >/dev/null 2>&1; then \
+		echo "Route Health:"; \
+		Route=$$(kubectl get route superset-mcp -o jsonpath='{.spec.host}'); \
+		curl -f https://$$Route/health && echo "✅ Route healthy" || echo "❌ Route unhealthy"; \
+	fi
+
+# Compare environments
+compare:
+	@if [ -z "$(ENV1)" ] || [ -z "$(ENV2)" ]; then echo "❌ Two environments required. Usage: make compare ENV1=<env1> ENV2=<env2>"; exit 1; fi
+	@echo "Comparing $(ENV1) and $(ENV2) environments..."
+	@echo "=== $(ENV1) ==="
+	kustomize build kustomize/overlays/$(ENV1) | grep -E "kind:|metadata:" | head -10
+	@echo ""
+	@echo "=== $(ENV2) ==="
+	kustomize build kustomize/overlays/$(ENV2) | grep -E "kind:|metadata:" | head -10
+
+# List all environments
+list-envs:
+	@echo "Available environments:"
+	@ls -1 kustomize/overlays/ | sed 's/^/  - /'
+
+# Show resource usage
+resources:
+	@if [ -z "$(ENV)" ]; then echo "❌ Environment not specified. Usage: make resources ENV=<environment>"; exit 1; fi
+	@echo "Resource usage for $(ENV) environment:"
+	@echo ""
+	kubectl top pods -l app.kubernetes.io/instance=superset-mcp-$(ENV) --containers
+	@echo ""
+	@echo "Resource requests/limits:"
+	kubectl get pods -l app.kubernetes.io/instance=superset-mcp-$(ENV) -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{range .spec.containers[*]}{"  "}{.name}{": requests="}{.resources.requests.cpu}{"/"}{.resources.requests.memory}{", limits="}{.resources.limits.cpu}{"/"}{.resources.limits.memory}{"\n"}{end}{"\n"}{end}'
+
+# Backup configuration
+backup:
+	@if [ -z "$(ENV)" ]; then echo "❌ Environment not specified. Usage: make backup ENV=<environment>"; exit 1; fi
+	@if [ -z "$(BACKUP_DIR)" ]; then BACKUP_DIR="backups"; fi
+	@echo "Backing up $(ENV) configuration..."
+	mkdir -p $(BACKUP_DIR)
+	kustomize build kustomize/overlays/$(ENV) > $(BACKUP_DIR)/$(ENV)-backup-$$(date +%Y%m%d-%H%M%S).yaml
+	@echo "✅ Backup saved to $(BACKUP_DIR)"
+
+# Restore configuration
+restore:
+	@if [ -z "$(FILE)" ]; then echo "❌ Backup file not specified. Usage: make restore FILE=<backup-file.yaml>"; exit 1; fi
+	@if [ ! -f "$(FILE)" ]; then echo "❌ Backup file '$(FILE)' not found"; exit 1; fi
+	@echo "Restoring from $(FILE)..."
+	kubectl apply -f $(FILE)
+	@echo "✅ Restore completed"
+
+# Generate documentation
+docs:
+	@echo "Generating Kustomize documentation..."
+	@echo "# Superset MCP Service - Kustomize Environments" > kustomize-docs.md
+	@echo "" >> kustomize-docs.md
+	@echo "## Available Environments" >> kustomize-docs.md
+	@for env in $$(ls kustomize/overlays/); do \
+		echo "### $$env" >> kustomize-docs.md; \
+		echo "- Replicas: $$(kustomize build kustomize/overlays/$$env | grep -A1 'replicas:' | tail -1 | sed 's/.*count: //')" >> kustomize-docs.md; \
+		echo "- Max Replicas: $$(kustomize build kustomize/overlays/$$env | grep -A1 'maxReplicas:' | tail -1 | sed 's/.*value: //')" >> kustomize-docs.md; \
+		echo "- Memory: $$(kustomize build kustomize/overlays/$$env | grep -A2 'memory:' | grep -E 'requests|limits' | head -2 | sed 's/.*memory: //' | tr '\n' '/' | sed 's/\/$$//')" >> kustomize-docs.md; \
+		echo "" >> kustomize-docs.md; \
+	done
+	@echo "✅ Documentation generated in kustomize-docs.md"

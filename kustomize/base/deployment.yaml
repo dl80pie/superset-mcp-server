@@ -1,0 +1,95 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: superset-mcp
+  labels:
+    app: superset-mcp
+    component: mcp-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: superset-mcp
+  template:
+    metadata:
+      labels:
+        app: superset-mcp
+        component: mcp-service
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        fsGroup: 1001
+      containers:
+        - name: mcp-service
+          image: superset-mcp:latest
+          imagePullPolicy: Always
+          ports:
+            - name: mcp
+              containerPort: 5008
+              protocol: TCP
+          env:
+            - name: FLASK_APP
+              value: superset
+            - name: PYTHONPATH
+              value: /app
+            - name: MCP_DEV_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: superset-mcp-config
+                  key: MCP_DEV_USERNAME
+            - name: SUPERSET_WEBSERVER_ADDRESS
+              valueFrom:
+                secretKeyRef:
+                  name: superset-mcp-config
+                  key: SUPERSET_WEBSERVER_ADDRESS
+            - name: DATABASE_URI
+              valueFrom:
+                secretKeyRef:
+                  name: superset-mcp-config
+                  key: DATABASE_URI
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: superset-mcp-config
+                  key: SECRET_KEY
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: superset-mcp-config
+                  key: REDIS_URL
+            - name: WEBDRIVER_BASEURL
+              valueFrom:
+                secretKeyRef:
+                  name: superset-mcp-config
+                  key: WEBDRIVER_BASEURL
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 5008
+            initialDelaySeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 5008
+            initialDelaySeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+            periodSeconds: 10
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL

@@ -1,0 +1,35 @@
+---
+# OpenShift BuildConfig for Superset MCP Service
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: superset-mcp
+spec:
+  source:
+    type: Git
+    git:
+      uri: https://github.com/your-org/superset-mcp.git  # Replace with your repo
+      ref: main
+    contextDir: .
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: Dockerfile
+  output:
+    to:
+      kind: ImageStreamTag
+      name: superset-mcp:latest
+  triggers:
+    - type: GitHub
+      github:
+        secret: "your-webhook-secret"
+    - type: ConfigChange
+    - type: ImageChange
+---
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  name: superset-mcp
+spec:
+  lookupPolicy:
+    local: false

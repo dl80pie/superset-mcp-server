@@ -1,0 +1,28 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: superset-mcp
+spec:
+  template:
+    spec:
+      containers:
+        - name: mcp-service
+          env:
+            - name: WEBDRIVER_TYPE
+              value: "none"
+            - name: MCP_SCREENSHOTS_ENABLED
+              value: "false"
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          livenessProbe:
+            initialDelaySeconds: 15
+            timeoutSeconds: 5
+          readinessProbe:
+            initialDelaySeconds: 10
+            timeoutSeconds: 5

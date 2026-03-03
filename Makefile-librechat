@@ -1,0 +1,396 @@
+# Superset MCP Service + LibreChat Integration Makefile
+
+.PHONY: help setup-librechat test-librechat deploy-librechat clean-librechat
+
+# Default target
+help:
+	@echo "Superset MCP Service + LibreChat Integration"
+	@echo ""
+	@echo "Available commands:"
+	@echo "  setup-librechat      - Setup LibreChat with Superset MCP integration"
+	@echo "  test-librechat       - Test LibreChat + Superset MCP connection"
+	@echo "  deploy-librechat     - Deploy LibreChat with Superset MCP"
+	@echo "  clean-librechat      - Clean LibreChat deployment"
+	@echo "  help                 - Show this help message"
+
+# Setup LibreChat with Superset MCP integration
+setup-librechat:
+	@echo "Setting up LibreChat with Superset MCP integration..."
+	@if [ -z "$(SUPERSET_MCP_URL)" ]; then echo "❌ SUPERSET_MCP_URL environment variable not set"; exit 1; fi
+	@if [ -z "$(SUPERSET_MCP_PASSWORD)" ]; then echo "❌ SUPERSET_MCP_PASSWORD environment variable not set"; exit 1; fi
+	
+	# Create LibreChat directory
+	mkdir -p librechat
+	cd librechat
+	
+	# Clone LibreChat if not exists
+	@if [ ! -d "librechat-source" ]; then \
+		echo "Cloning LibreChat..."; \
+		git clone https://github.com/librechat/librechat.git librechat-source; \
+	fi
+	
+	cd librechat-source
+	
+	# Install dependencies
+	npm install
+	
+	# Create environment file
+	@echo "Creating LibreChat environment configuration..."
+	cat > .env << EOF
+# LibreChat Configuration with Superset MCP
+NODE_ENV=production
+PORT=3080
+
+# Superset MCP Service Integration
+SUPerset_MCP_ENABLED=true
+SUPerset_MCP_URL=$(SUPERSET_MCP_URL)
+SUPerset_MCP_USERNAME=admin
+SUPerset_MCP_PASSWORD=$(SUPERSET_MCP_PASSWORD)
+SUPerset_MCP_TIMEOUT=30000
+
+# MCP Settings
+ENABLE_MCP_TOOLS=true
+MCP_SERVICE_TIMEOUT=30000
+MCP_RETRY_ATTEMPTS=2
+
+# Database Configuration
+MONGODB_URI=mongodb://localhost:27017/librechat
+ME_CONFIG_MONGODB_URL=mongodb://localhost:27017/librechat
+
+# Security
+SESSION_SECRET=$(openssl rand -base64 32)
+JWT_SECRET=$(openssl rand -base64 32)
+EOF
+	
+	@echo "✅ LibreChat setup completed!"
+	@echo "📁 Configuration in: librechat/librechat-source/.env"
+	@echo "🚀 Start with: cd librechat/librechat-source && npm run dev"
+
+# Test LibreChat + Superset MCP connection
+test-librechat:
+	@echo "Testing LibreChat + Superset MCP integration..."
+	@if [ -z "$(SUPERSET_MCP_URL)" ]; then echo "❌ SUPERSET_MCP_URL environment variable not set"; exit 1; fi
+	
+	# Test Superset MCP Service
+	@echo "Testing Superset MCP Service..."
+	curl -f $(SUPERSET_MCP_URL)/health || (echo "❌ Superset MCP Service not reachable" && exit 1)
+	@echo "✅ Superset MCP Service reachable"
+	
+	# Test MCP tools list
+	@echo "Testing MCP tools availability..."
+	curl -X POST $(SUPERSET_MCP_URL)/mcp \
+		-H "Content-Type: application/json" \
+		-d '{"jsonrpc": "2.0", "method": "tools/list", "id": 1}' | \
+		grep -q "list_charts" || (echo "❌ MCP tools not available" && exit 1)
+	@echo "✅ MCP tools available"
+	
+	# Test authentication (if configured)
+	@if [ -n "$(SUPERSET_MCP_PASSWORD)" ]; then \
+		echo "Testing MCP authentication..."; \
+		curl -X POST $(SUPERSET_MCP_URL)/mcp \
+			-H "Content-Type: application/json" \
+			-u admin:$(SUPERSET_MCP_PASSWORD) \
+			-d '{"jsonrpc": "2.0", "method": "tools/list", "id": 1}' | \
+			grep -q "list_charts" || (echo "❌ MCP authentication failed" && exit 1); \
+		echo "✅ MCP authentication working"; \
+	fi
+	
+	@echo "✅ All tests passed! LibreChat + Superset MCP integration ready."
+
+# Deploy LibreChat with Superset MCP (Docker)
+deploy-librechat:
+	@echo "Deploying LibreChat with Superset MCP integration..."
+	@if [ -z "$(SUPERSET_MCP_URL)" ]; then echo "❌ SUPERSET_MCP_URL environment variable not set"; exit 1; fi
+	@if [ -z "$(SUPERSET_MCP_PASSWORD)" ]; then echo "❌ SUPERSET_MCP_PASSWORD environment variable not set"; exit 1; fi
+	
+	# Create Docker Compose file
+	@echo "Creating Docker Compose configuration..."
+	cat > docker-compose.librechat.yml << EOF
+version: '3.8'
+
+services:
+  librechat:
+    image: ghcr.io/librechat/librechat:latest
+    container_name: librechat-app
+    ports:
+      - "3080:3080"
+    environment:
+      # Superset MCP Integration
+      - SUPerset_MCP_ENABLED=true
+      - SUPerset_MCP_URL=$(SUPERSET_MCP_URL)
+      - SUPerset_MCP_USERNAME=admin
+      - SUPerset_MCP_PASSWORD=$(SUPERSET_MCP_PASSWORD)
+      - SUPerset_MCP_TIMEOUT=30000
+      
+      # LibreChat Settings
+      - ENABLE_MCP_TOOLS=true
+      - MCP_SERVICE_TIMEOUT=30000
+      - MCP_RETRY_ATTEMPTS=2
+      
+      # Database
+      - MONGODB_URI=mongodb://mongo:27017/librechat
+      - ME_CONFIG_MONGODB_URL=mongodb://mongo:27017/librechat
+      
+      # Security
+      - SESSION_SECRET=$(openssl rand -base64 32)
+      - JWT_SECRET=$(openssl rand -base64 32)
+    depends_on:
+      - mongo
+    networks:
+      - librechat-network
+    restart: unless-stopped
+
+  mongo:
+    image: mongo:latest
+    container_name: librechat-mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - librechat_mongo_data:/data/db
+    networks:
+      - librechat-network
+    restart: unless-stopped
+
+volumes:
+  librechat_mongo_data:
+
+networks:
+  librechat-network:
+    driver: bridge
+EOF
+	
+	# Deploy with Docker Compose
+	@echo "Starting LibreChat with Docker Compose..."
+	docker-compose -f docker-compose.librechat.yml up -d
+	
+	# Wait for startup
+	@echo "Waiting for LibreChat to start..."
+	sleep 30
+	
+	# Health check
+	@echo "Performing health check..."
+	curl -f http://localhost:3080/health || (echo "❌ LibreChat health check failed" && exit 1)
+	
+	@echo "✅ LibreChat deployed successfully!"
+	@echo "🌐 LibreChat available at: http://localhost:3080"
+	@echo "🔗 Superset MCP URL: $(SUPERSET_MCP_URL)"
+
+# Deploy LibreChat with Superset MCP (Kubernetes)
+deploy-librechat-k8s:
+	@echo "Deploying LibreChat with Superset MCP to Kubernetes..."
+	@if [ -z "$(SUPERSET_MCP_URL)" ]; then echo "❌ SUPERSET_MCP_URL environment variable not set"; exit 1; fi
+	@if [ -z "$(SUPERSET_MCP_PASSWORD)" ]; then echo "❌ SUPERSET_MCP_PASSWORD environment variable not set"; exit 1; fi
+	
+	# Create Kubernetes secret
+	@echo "Creating Kubernetes secret..."
+	kubectl create secret generic librechat-secrets \
+		--from-literal=superset-password=$(SUPERSET_MCP_PASSWORD) \
+		--from-literal=session-secret=$(openssl rand -base64 32) \
+		--from-literal=jwt-secret=$(openssl rand -base64 32) \
+		--dry-run=client -o yaml | kubectl apply -f -
+	
+	# Create Kubernetes deployment
+	@echo "Creating Kubernetes deployment..."
+	cat > librechat-k8s.yaml << EOF
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: librechat
+  labels:
+    app: librechat
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: librechat
+  template:
+    metadata:
+      labels:
+        app: librechat
+    spec:
+      containers:
+      - name: librechat
+        image: ghcr.io/librechat/librechat:latest
+        ports:
+        - containerPort: 3080
+        env:
+        - name: SUPerset_MCP_ENABLED
+          value: "true"
+        - name: SUPerset_MCP_URL
+          value: "$(SUPERSET_MCP_URL)"
+        - name: SUPerset_MCP_USERNAME
+          value: "admin"
+        - name: SUPerset_MCP_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: librechat-secrets
+              key: superset-password
+        - name: ENABLE_MCP_TOOLS
+          value: "true"
+        - name: MCP_SERVICE_TIMEOUT
+          value: "30000"
+        - name: SESSION_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: librechat-secrets
+              key: session-secret
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: librechat-secrets
+              key: jwt-secret
+        resources:
+          requests:
+            cpu: 200m
+            memory: 512Mi
+          limits:
+            cpu: 500m
+            memory: 1Gi
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 3080
+          initialDelaySeconds: 10
+          periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: librechat
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 3080
+  selector:
+    app: librechat
+EOF
+	
+	# Apply Kubernetes manifests
+	kubectl apply -f librechat-k8s.yaml
+	
+	@echo "✅ LibreChat deployed to Kubernetes!"
+	@echo "🌐 Getting LibreChat URL..."
+	kubectl get service librechat --timeout=60s
+
+# Clean LibreChat deployment
+clean-librechat:
+	@echo "Cleaning LibreChat deployment..."
+	
+	# Stop Docker Compose
+	@if [ -f "docker-compose.librechat.yml" ]; then \
+		echo "Stopping Docker Compose deployment..."; \
+		docker-compose -f docker-compose.librechat.yml down; \
+		rm -f docker-compose.librechat.yml; \
+	fi
+	
+	# Clean Kubernetes
+	@if kubectl get deployment librechat >/dev/null 2>&1; then \
+		echo "Cleaning Kubernetes deployment..."; \
+		kubectl delete deployment,service,secret -l app=librechat; \
+		rm -f librechat-k8s.yaml; \
+	fi
+	
+	# Clean local setup
+	@if [ -d "librechat" ]; then \
+		echo "Cleaning local setup..."; \
+		rm -rf librechat; \
+	fi
+	
+	@echo "✅ LibreChat deployment cleaned!"
+
+# Show LibreChat status
+status-librechat:
+	@echo "LibreChat + Superset MCP Status:"
+	@echo ""
+	
+	# Docker status
+	@if docker ps --filter "name=librechat" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep -q librechat; then \
+		echo "Docker Deployment:"; \
+		docker ps --filter "name=librechat" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"; \
+		echo ""; \
+	fi
+	
+	# Kubernetes status
+	@if kubectl get deployment librechat >/dev/null 2>&1; then \
+		echo "Kubernetes Deployment:"; \
+		kubectl get pods -l app=librechat; \
+		echo ""; \
+		kubectl get service librechat; \
+		echo ""; \
+	fi
+	
+	# Superset MCP status
+	@if [ -n "$(SUPERSET_MCP_URL)" ]; then \
+		echo "Superset MCP Service:"; \
+		curl -s $(SUPERSET_MCP_URL)/health | jq -r '.status // "Unknown"' || echo "❌ Not reachable"; \
+		echo ""; \
+	fi
+
+# Test LibreChat functionality
+test-functional:
+	@echo "Testing LibreChat + Superset MCP functionality..."
+	@if [ -z "$(SUPERSET_MCP_URL)" ]; then echo "❌ SUPERSET_MCP_URL environment variable not set"; exit 1; fi
+	
+	# Test LibreChat health
+	@echo "Testing LibreChat health..."
+	curl -f http://localhost:3080/health || (echo "❌ LibreChat not reachable" && exit 1)
+	@echo "✅ LibreChat healthy"
+	
+	# Test MCP integration through LibreChat API
+	@echo "Testing MCP integration..."
+	curl -X POST http://localhost:3080/api/mcp/call \
+		-H "Content-Type: application/json" \
+		-d '{"service": "superset", "method": "tools/list", "params": {}}' | \
+		grep -q "list_charts" || (echo "❌ MCP integration not working" && exit 1)
+	@echo "✅ MCP integration working"
+	
+	# Test specific Superset functionality
+	@echo "Testing Superset chart listing..."
+	curl -X POST http://localhost:3080/api/mcp/call \
+		-H "Content-Type: application/json" \
+		-d '{"service": "superset", "method": "tools/call", "params": {"name": "list_charts", "arguments": {}}}' | \
+		grep -q "charts" || (echo "❌ Chart listing not working" && exit 1)
+	@echo "✅ Chart listing working"
+	
+	@echo "✅ All functional tests passed!"
+
+# Generate example prompts
+generate-prompts:
+	@echo "Generating example prompts for LibreChat + Superset MCP..."
+	cat > librechat-prompts.md << EOF
+# LibreChat + Superset MCP Example Prompts
+
+## Data Discovery
+- "Zeig mir alle verfügbaren Dashboards in Superset"
+- "Welche Charts sind im Sales Dashboard?"
+- "Liste alle Datenquellen auf, die verfügbar sind"
+
+## Data Analysis  
+- "Führe eine SQL Abfrage aus, um die Top 10 Kunden zu finden"
+- "Analysiere die Verkaufszahlen nach Quartal"
+- "Zähle die Anzahl der Benutzer in der Datenbank"
+
+## Chart Management
+- "Erstelle einen neuen Chart für die Umsatzentwicklung"
+- "Zeig mir Details zum Chart mit ID 123"
+- "Aktualisiere den Sales Chart mit neuen Filtern"
+
+## Visualization (nur mit Screenshots)
+- "Zeig mir eine Vorschau des Sales Charts"
+- "Generiere ein Bild vom Dashboard"
+- "Wie sieht der Customer Lifetime Value Chart aus?"
+
+## Advanced Queries
+- "Welche Trends gibt es in den Verkaufsdaten der letzten 6 Monate?"
+- "Vergleiche die Performance der verschiedenen Produktkategorien"
+- "Erstelle ein Dashboard für die Marketing-KPIs"
+EOF
+	
+	@echo "✅ Example prompts generated in librechat-prompts.md"
