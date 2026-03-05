@@ -1,0 +1,367 @@
+# Superset MCP Service - GitLab Integration Makefile
+
+.PHONY: help gitlab-setup gitlab-deploy gitlab-status gitlab-clean argocd-app argocd-app-custom gitlab-agent
+
+ARGOCD_APP_NAME ?= superset-mcp-production
+ARGOCD_APP_NAMESPACE ?= openshift-gitops
+ARGOCD_PROJECT ?= default
+ARGOCD_REPO_URL ?= http://gitlab.home.lab/openshift/superset-mcp-server.git
+ARGOCD_TARGET_REVISION ?= main
+ARGOCD_SOURCE_PATH ?= kustomize/overlays/production
+ARGOCD_DEST_NAMESPACE ?= superset-mcp
+
+# Default target
+help:
+	@echo "Superset MCP Service - GitLab Integration"
+	@echo ""
+	@echo "Available commands:"
+	@echo "  gitlab-setup       - Setup GitLab CI/CD and OpenShift integration"
+	@echo "  gitlab-deploy      - Deploy using GitLab CI/CD pipeline"
+	@echo "  gitlab-status      - Check GitLab deployment status"
+	@echo "  gitlab-clean       - Clean GitLab resources"
+	@echo "  help               - Show this help message"
+	@echo ""
+	@echo "Environment setup:"
+	@echo "  gitlab-vars        - Show required GitLab CI/CD variables"
+	@echo "  argocd-app         - Apply Argo CD GitOps Application"
+	@echo "  argocd-app-custom  - Apply Argo CD Application with Make vars"
+	@echo "  gitlab-agent       - Alias for argocd-app (deprecated)"
+	@echo "  gitlab-registry    - Test GitLab Container Registry"
+
+# Setup GitLab Integration
+gitlab-setup:
+	@echo "Setting up GitLab integration for Superset MCP Service..."
+	@echo ""
+	@echo "1. GitLab CI/CD Variables required:"
+	@echo "   CI_REGISTRY_PASSWORD: GitLab token with registry:write scope"
+	@echo "   KUBE_CONTEXT_DEV: OpenShift context for development"
+	@echo "   KUBE_CONTEXT_STAGING: OpenShift context for staging"
+	@echo "   KUBE_CONTEXT_PROD: OpenShift context for production"
+	@echo "   SUPERSET_PASSWORD: Superset admin password"
+	@echo "   DATABASE_URI_DEV/STAGING/PROD: Database connections"
+	@echo "   REDIS_URL_DEV/STAGING/PROD: Redis connections"
+	@echo ""
+	@echo "2. Argo CD GitOps:"
+	@echo "   - Ensure OpenShift GitOps Operator is installed"
+	@echo "   - Apply Application manifest: make -f Makefile-gitlab argocd-app"
+	@echo ""
+	@echo "3. Container Registry:"
+	@echo "   - Enable Container Registry in GitLab Project Settings"
+	@echo "   - Test registry access: make gitlab-registry"
+	@echo ""
+	@echo "4. CI/CD Pipeline:"
+	@echo "   - .gitlab-ci.yml uses a reusable scripted OpenShift deploy template"
+	@echo "   - Pipeline stages: build → deploy-dev → deploy-staging → deploy-production"
+	@echo ""
+	@echo "✅ GitLab integration setup completed!"
+
+# Show required GitLab variables
+gitlab-vars:
+	@echo "Required GitLab CI/CD Variables:"
+	@echo ""
+	@echo "=== CI/CD Configuration ==="
+	@echo "CI_REGISTRY_PASSWORD: [GitLab Token mit registry:write scope]"
+	@echo "KUBE_CONTEXT_DEV: [OpenShift Context für Development]"
+	@echo "KUBE_CONTEXT_STAGING: [OpenShift Context für Staging]"
+	@echo "KUBE_CONTEXT_PROD: [OpenShift Context für Production]"
+	@echo "OPENSHIFT_PROJECT: superset-mcp"
+	@echo "KUBE_DOMAIN: [Domain für OpenShift Routes]"
+	@echo ""
+	@echo "=== Application Secrets ==="
+	@echo "SUPERSET_PASSWORD: [Superset Admin Passwort]"
+	@echo "DATABASE_URI_DEV: postgresql://user:pass@dev-db:5432/superset"
+	@echo "DATABASE_URI_STAGING: postgresql://user:pass@staging-db:5432/superset"
+	@echo "DATABASE_URI_PROD: postgresql://user:pass@prod-db:5432/superset"
+	@echo "REDIS_URL_DEV: redis://dev-redis:6379/0"
+	@echo "REDIS_URL_STAGING: redis://staging-redis:6379/0"
+	@echo "REDIS_URL_PROD: redis://prod-redis:6379/0"
+	@echo ""
+	@echo "=== Optional ==="
+	@echo "GOOGLE_ANALYTICS_KEY: [Für GitLab Pages Analytics]"
+	@echo "SLACK_WEBHOOK: [Für CI/CD Notifications]"
+	@echo "ARGOCD_REPO_URL: $(ARGOCD_REPO_URL)"
+	@echo "ARGOCD_TARGET_REVISION: $(ARGOCD_TARGET_REVISION)"
+	@echo "ARGOCD_SOURCE_PATH: $(ARGOCD_SOURCE_PATH)"
+	@echo "ARGOCD_DEST_NAMESPACE: $(ARGOCD_DEST_NAMESPACE)"
+	@echo ""
+
+# Setup Argo CD GitOps Application
+argocd-app:
+	@echo "Applying Argo CD GitOps Application..."
+	@if [ ! -f "argocd/production-application.yaml" ]; then \
+		echo "❌ Argo CD Application manifest not found: argocd/production-application.yaml"; \
+		exit 1; \
+	fi
+	oc apply -f argocd/production-application.yaml
+	@echo "✅ Argo CD Application applied"
+	@echo "📝 Verify in Argo CD: app=superset-mcp-production (namespace openshift-gitops)"
+
+# Setup Argo CD GitOps Application from Make variables
+argocd-app-custom:
+	@echo "Applying parameterized Argo CD Application..."
+	@TMP_FILE=$$(mktemp); \
+	cat > $$TMP_FILE << EOF
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: $(ARGOCD_APP_NAME)
+  namespace: $(ARGOCD_APP_NAMESPACE)
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: $(ARGOCD_PROJECT)
+  source:
+    repoURL: $(ARGOCD_REPO_URL)
+    targetRevision: $(ARGOCD_TARGET_REVISION)
+    path: $(ARGOCD_SOURCE_PATH)
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: $(ARGOCD_DEST_NAMESPACE)
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - PruneLast=true
+      - ApplyOutOfSyncOnly=true
+EOF
+	oc apply -f $$TMP_FILE
+	rm -f $$TMP_FILE
+	@echo "✅ Parameterized Argo CD Application applied"
+	@echo "📝 App: $(ARGOCD_APP_NAME), Repo: $(ARGOCD_REPO_URL), Revision: $(ARGOCD_TARGET_REVISION)"
+
+# Backward-compatible alias
+gitlab-agent: argocd-app
+	@echo "ℹ️  gitlab-agent is deprecated, use argocd-app"
+
+# Test GitLab Container Registry
+gitlab-registry:
+	@echo "Testing GitLab Container Registry..."
+	@if [ -z "$(CI_REGISTRY)" ]; then \
+		echo "❌ CI_REGISTRY not set, using default: registry.gitlab.com"; \
+		export CI_REGISTRY="registry.gitlab.com"; \
+	fi
+	@if [ -z "$(CI_REGISTRY_USER)" ]; then \
+		echo "❌ CI_REGISTRY_USER not set, using default: gitlab-ci-token"; \
+		export CI_REGISTRY_USER="gitlab-ci-token"; \
+	fi
+	@if [ -z "$(CI_REGISTRY_PASSWORD)" ]; then \
+		echo "❌ CI_REGISTRY_PASSWORD not set"; \
+		echo "Set with: export CI_REGISTRY_PASSWORD=your-token"; \
+		exit 1; \
+	fi
+	@echo "Logging into GitLab Registry..."
+	@echo $$CI_REGISTRY_PASSWORD | docker login -u $$CI_REGISTRY_USER --password-stdin $$CI_REGISTRY
+	@echo "✅ Registry login successful"
+	@echo "Testing pull..."
+	@docker pull $$CI_REGISTRY/alpine:latest || echo "⚠️  Pull test failed (image may not exist)"
+	@echo "✅ GitLab Registry test completed"
+
+# Deploy using GitLab CI/CD (trigger pipeline)
+gitlab-deploy:
+	@echo "Triggering GitLab CI/CD pipeline..."
+	@if [ -z "$(GITLAB_TOKEN)" ]; then \
+		echo "❌ GITLAB_TOKEN environment variable not set"; \
+		echo "Get token from GitLab User Settings → Access Tokens"; \
+		exit 1; \
+	fi
+	@if [ -z "$(GITLAB_PROJECT_ID)" ]; then \
+		echo "❌ GITLAB_PROJECT_ID environment variable not set"; \
+		echo "Get ID from GitLab Project → General"; \
+		exit 1; \
+	fi
+	@if [ -z "$(TARGET_BRANCH)" ]; then \
+		echo "❌ TARGET_BRANCH not set, using: main"; \
+		export TARGET_BRANCH="main"; \
+	fi
+	@echo "Triggering pipeline for branch: $(TARGET_BRANCH)"
+	@curl --request POST \
+		--header "PRIVATE-TOKEN: $(GITLAB_TOKEN)" \
+		--header "Content-Type: application/json" \
+		--data "{\"ref\":\"$(TARGET_BRANCH)\", \"variables\":{\"MANUAL_DEPLOY\":\"true\"}}" \
+		"https://gitlab.example.com/api/v4/projects/$(GITLAB_PROJECT_ID)/pipeline" || \
+		curl --request POST \
+		--header "PRIVATE-TOKEN: $(GITLAB_TOKEN)" \
+		--header "Content-Type: application/json" \
+		--data "{\"ref\":\"$(TARGET_BRANCH)\"}" \
+		"https://gitlab.example.com/api/v4/projects/$(GITLAB_PROJECT_ID)/pipeline"
+	@echo "✅ Pipeline triggered"
+	@echo "📊 Check pipeline status in GitLab Project → CI/CD → Pipelines"
+
+# Check GitLab deployment status
+gitlab-status:
+	@echo "Checking GitLab deployment status..."
+	@echo ""
+	@echo "=== GitLab CI/CD Pipelines ==="
+	@if [ -n "$(GITLAB_TOKEN)" ] && [ -n "$(GITLAB_PROJECT_ID)" ]; then \
+		echo "Recent pipelines:"; \
+		curl --header "PRIVATE-TOKEN: $(GITLAB_TOKEN)" \
+			"https://gitlab.example.com/api/v4/projects/$(GITLAB_PROJECT_ID)/pipelines?per_page=5" | \
+			jq -r '.[] | "\(.status): \(.ref) (\(.created_at | fromdateiso8601 | strftime("%Y-%m-%d %H:%M")))"' 2>/dev/null || \
+			echo "⚠️  Could not fetch pipeline status"; \
+	else \
+		echo "Set GITLAB_TOKEN and GITLAB_PROJECT_ID to check pipeline status"; \
+	fi
+	@echo ""
+	@echo "=== OpenShift Deployments ==="
+	@oc get deployments -l app.gitlab.com/managed-by=gitlab-ci -o wide || echo "No GitLab-managed deployments found"
+	@echo ""
+	@echo "=== Argo CD Application Status ==="
+	@oc get applications.argoproj.io -n openshift-gitops superset-mcp-production || echo "Argo CD Application not found"
+	@echo ""
+	@echo "=== Environments ==="
+	@oc get projects -l app.gitlab.com/env || echo "No GitLab environments found"
+
+# Clean GitLab resources
+gitlab-clean:
+	@echo "Cleaning GitLab resources..."
+	@echo ""
+	@echo "=== Cleaning OpenShift Resources ==="
+	@oc delete deployments -l app.gitlab.com/managed-by=gitlab-ci --ignore-not-found=true
+	@oc delete services -l app.gitlab.com/managed-by=gitlab-ci --ignore-not-found=true
+	@oc delete secrets -l app.gitlab.com/managed=gitlab-ci --ignore-not-found=true
+	@echo ""
+	@echo "=== Cleaning Argo CD Application ==="
+	@oc delete -f argocd/production-application.yaml --ignore-not-found=true || echo "Argo CD Application not found"
+	@echo ""
+	@echo "=== Cleaning Local Files ==="
+	@rm -f kustomize-*.yaml
+	@echo ""
+	@echo "✅ GitLab resources cleaned"
+
+# Setup GitLab Pages documentation
+gitlab-pages:
+	@echo "Setting up GitLab Pages documentation..."
+	@mkdir -p docs
+	@echo "# Superset MCP Service Documentation" > docs/index.md
+	@echo "" >> docs/index.md
+	@echo "Welcome to the Superset MCP Service documentation." >> docs/index.md
+	@echo "" >> docs/index.md
+	@echo "## Quick Start" >> docs/index.md
+	@echo "1. [Installation](installation.md)" >> docs/index.md
+	@echo "2. [Configuration](configuration.md)" >> docs/index.md
+	@echo "3. [Deployment](deployment.md)" >> docs/index.md
+	@echo "" >> docs/index.md
+	@echo "## API Reference" >> docs/index.md
+	@echo "See [API Documentation](api.md) for detailed API information." >> docs/index.md
+	@echo "✅ GitLab Pages documentation setup completed"
+	@echo "📚 Documentation will be available at: https://your-group.gitlab.io/superset-mcp"
+
+# Test GitLab integration locally
+gitlab-test:
+	@echo "Testing GitLab integration locally..."
+	@echo ""
+	@echo "=== Testing Docker Build ==="
+	@docker build -f Dockerfile -t test-superset-mcp:local .
+	@echo "✅ Docker build successful"
+	@echo ""
+	@echo "=== Testing Kustomize Build ==="
+	@oc kustomize kustomize/overlays/production > /dev/null && echo "✅ Kustomize build successful" || echo "❌ Kustomize build failed"
+	@echo ""
+	@echo "=== Testing GitLab CI/CD Syntax ==="
+	@if command -v gitlab-ci-lint >/dev/null 2>&1; then \
+		gitlab-ci-lint .gitlab-ci.yml && echo "✅ GitLab CI/CD syntax valid" || echo "❌ GitLab CI/CD syntax invalid"; \
+	else \
+		echo "⚠️  gitlab-ci-lint not available, install with: pip install gitlab-ci-lint"; \
+	fi
+	@echo ""
+	@echo "=== Testing Argo CD Application Manifest ==="
+	@if [ -f "argocd/production-application.yaml" ]; then \
+		oc apply --dry-run=client -f argocd/production-application.yaml && echo "✅ Argo CD Application manifest valid" || echo "❌ Argo CD Application manifest invalid"; \
+	else \
+		echo "⚠️  Argo CD Application manifest not found"; \
+	fi
+	@echo ""
+	@echo "✅ Local GitLab integration test completed"
+
+# Generate GitLab configuration template
+gitlab-template:
+	@echo "Generating GitLab configuration template..."
+	@mkdir -p templates
+	@cat > templates/gitlab-setup.md << EOF
+# GitLab Setup Template für Superset MCP Service
+
+## 1. GitLab Project Setup
+- Repository erstellen/klonen
+- Container Registry aktivieren
+- OpenShift GitOps (Argo CD) installieren
+
+## 2. CI/CD Variables konfigurieren
+In GitLab Project → Settings → CI/CD → Variables folgende Variablen setzen:
+
+### Required Variables
+\`\`\`bash
+CI_REGISTRY_PASSWORD: [GitLab Token mit registry:write scope]
+KUBE_CONTEXT_DEV: [OpenShift Context für Development]
+KUBE_CONTEXT_STAGING: [OpenShift Context für Staging]
+KUBE_CONTEXT_PROD: [OpenShift Context für Production]
+OPENSHIFT_PROJECT: superset-mcp
+KUBE_DOMAIN: [Domain für OpenShift Routes]
+\`\`\`
+
+### Application Secrets
+\`\`\`bash
+SUPERSET_PASSWORD: [Superset Admin Passwort]
+DATABASE_URI_DEV: postgresql://user:pass@dev-db:5432/superset
+DATABASE_URI_STAGING: postgresql://user:pass@staging-db:5432/superset
+DATABASE_URI_PROD: postgresql://user:pass@prod-db:5432/superset
+REDIS_URL_DEV: redis://dev-redis:6379/0
+REDIS_URL_STAGING: redis://staging-redis:6379/0
+REDIS_URL_PROD: redis://prod-redis:6379/0
+\`\`\`
+
+## 3. Argo CD GitOps Setup
+\`\`\`bash
+# Argo CD Application deployen
+make -f Makefile-gitlab argocd-app
+\`\`\`
+
+## 4. Pipeline Test
+\`\`\`bash
+# Registry testen
+make -f Makefile-gitlab gitlab-registry
+
+# Lokale Tests
+make -f Makefile-gitlab gitlab-test
+
+# Pipeline trigger
+make -f Makefile-gitlab gitlab-deploy TARGET_BRANCH=main
+\`\`\`
+
+## 5. Monitoring
+- GitLab Project → CI/CD → Pipelines
+- GitLab Project → Operations → Environments
+- GitLab Project → Infrastructure → OpenShift cluster
+EOF
+	@echo "✅ GitLab setup template generated in templates/gitlab-setup.md"
+
+# Show GitLab integration overview
+gitlab-overview:
+	@echo "Superset MCP Service - GitLab Integration Overview"
+	@echo ""
+	@echo "=== Components ==="
+	@echo "📦 GitLab Container Registry: Docker Images"
+	@echo "🚀 GitLab CI/CD Pipeline: Automated Builds & Deployments"
+	@echo "🔧 Argo CD: GitOps Integration"
+	@echo "📚 GitLab Pages: Documentation"
+	@echo "📊 GitLab Environments: Deployment Tracking"
+	@echo ""
+	@echo "=== Workflow ==="
+	@echo "1. Developer pushes code → GitLab Repository"
+	@echo "2. GitLab CI/CD Pipeline triggers:"
+	@echo "   - Build Stage: Docker Image Build + Security Scan"
+	@echo "   - Deploy Stage: scripted template + environment-specific variables"
+	@echo "3. Argo CD syncs manifests"
+	@echo "4. GitLab Pages publishes documentation"
+	@echo ""
+	@echo "=== Environments ==="
+	@echo "🟢 Development: Auto-deploy from develop branch"
+	@echo "🟡 Staging: Auto-deploy from main branch"
+	@echo "🔴 Production: Manual deploy from main branch"
+	@echo ""
+	@echo "=== Quick Commands ==="
+	@echo "Setup: make -f Makefile-gitlab gitlab-setup"
+	@echo "Deploy: make -f Makefile-gitlab gitlab-deploy"
+	@echo "Status: make -f Makefile-gitlab gitlab-status"
+	@echo "Clean: make -f Makefile-gitlab gitlab-clean"

@@ -5,15 +5,24 @@ kind: Kustomization
 metadata:
   name: superset-mcp-minimal
 
-bases:
+resources:
   - ../../base
 
-patchesStrategicMerge:
-  - deployment-patch.yaml
+patches:
+  - path: deployment-patch.yaml
+  - target:
+      kind: HorizontalPodAutoscaler
+      name: superset-mcp-hpa
+    patch: |-
+      - op: replace
+        path: /spec/maxReplicas
+        value: 8
 
-commonLabels:
-  app.kubernetes.io/instance: superset-mcp-minimal
-  app.kubernetes.io/environment: minimal
+labels:
+  - includeSelectors: true
+    pairs:
+      app.kubernetes.io/instance: superset-mcp-minimal
+      app.kubernetes.io/environment: minimal
 
 commonAnnotations:
   app.kubernetes.io/variant: "minimal"
@@ -22,12 +31,3 @@ commonAnnotations:
 replicas:
   - name: superset-mcp
     count: 3
-
-patches:
-  - target:
-      kind: HorizontalPodAutoscaler
-      name: superset-mcp-hpa
-    patch: |-
-      - op: replace
-        path: /spec/maxReplicas
-        value: 8

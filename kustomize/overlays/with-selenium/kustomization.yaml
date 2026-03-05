@@ -5,15 +5,24 @@ kind: Kustomization
 metadata:
   name: superset-mcp-with-selenium
 
-bases:
+resources:
   - ../../base
 
-patchesStrategicMerge:
-  - deployment-patch.yaml
+patches:
+  - path: deployment-patch.yaml
+  - target:
+      kind: HorizontalPodAutoscaler
+      name: superset-mcp-hpa
+    patch: |-
+      - op: replace
+        path: /spec/maxReplicas
+        value: 4
 
-commonLabels:
-  app.kubernetes.io/instance: superset-mcp-with-selenium
-  app.kubernetes.io/environment: with-selenium
+labels:
+  - includeSelectors: true
+    pairs:
+      app.kubernetes.io/instance: superset-mcp-with-selenium
+      app.kubernetes.io/environment: with-selenium
 
 commonAnnotations:
   app.kubernetes.io/variant: "with-selenium"
@@ -22,12 +31,3 @@ commonAnnotations:
 replicas:
   - name: superset-mcp
     count: 2
-
-patches:
-  - target:
-      kind: HorizontalPodAutoscaler
-      name: superset-mcp-hpa
-    patch: |-
-      - op: replace
-        path: /spec/maxReplicas
-        value: 4

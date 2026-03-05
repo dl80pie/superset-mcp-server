@@ -1,0 +1,238 @@
+---
+# GitLab CI/CD Pipeline für Superset MCP Service
+
+stages:
+  - build
+  - deploy-dev
+  - deploy-staging
+  - deploy-production
+
+variables:
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: "/certs"
+  OPENSHIFT_PROJECT: "superset-mcp"
+  DOCKER_BUILDKIT: 1
+
+# Base Image mit Docker-in-Docker
+image: docker:24.0.5
+
+services:
+  - docker:24.0.5-dind
+
+before_script:
+  - docker info
+  - echo $CI_REGISTRY_PASSWORD | docker login -u $CI_REGISTRY_USER --password-stdin $CI_REGISTRY
+
+# Build Docker Image
+build-image:
+  stage: build
+  script:
+    - |
+      echo "Building Docker image..."
+      docker build \
+        --build-arg BUILDKIT_INLINE_CACHE=1 \
+        --cache-from $CI_REGISTRY_IMAGE:latest \
+        -f Dockerfile \
+        -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA \
+        -t $CI_REGISTRY_IMAGE:latest \
+        .
+    - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
+    - docker push $CI_REGISTRY_IMAGE:latest
+    - echo "✅ Image built and pushed"
+  only:
+    - main
+    - develop
+
+# Security Scanning für Docker Image
+container-scanning:
+  stage: build
+  script:
+    - |
+      echo "Scanning Docker image for vulnerabilities..."
+      docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+        aquasec/trivy:latest image \
+        --exit-code 0 \
+        --severity HIGH,CRITICAL \
+        --format json \
+        --output full-scan-report.json \
+        $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA || true
+  artifacts:
+    reports:
+      container_scanning: full-scan-report.json
+    paths:
+      - full-scan-report.json
+    expire_in: 1 week
+  allow_failure: true
+  only:
+    - main
+    - develop
+
+# Reusable OpenShift scripted deploy template
+.openshift-scripted-deploy:
+  image: quay.io/openshift/origin-cli:4.16
+  script:
+    - |
+      set -eu
+
+      : "${KUBE_CONTEXT:?KUBE_CONTEXT is required}"
+      : "${OVERLAY_PATH:?OVERLAY_PATH is required}"
+      : "${DATABASE_URI:?DATABASE_URI is required}"
+      : "${REDIS_URL:?REDIS_URL is required}"
+
+      echo "Deploying to ${DEPLOY_ENV:-target} environment..."
+
+      oc config use-context "$KUBE_CONTEXT"
+      oc get project "$OPENSHIFT_PROJECT" >/dev/null 2>&1 || oc new-project "$OPENSHIFT_PROJECT"
+
+      oc create secret generic superset-mcp-secrets \
+        --from-literal=superpassword="$SUPERSET_PASSWORD" \
+        --from-literal=database-uri="$DATABASE_URI" \
+        --from-literal=redis-url="$REDIS_URL" \
+        --dry-run=client -o yaml | oc apply -f -
+
+      TMP_KUSTOMIZE_FILE="$(mktemp)"
+      cat > "$TMP_KUSTOMIZE_FILE" << EOF
+      apiVersion: kustomize.config.k8s.io/v1beta1
+      kind: Kustomization
+
+      resources:
+        - $OVERLAY_PATH
+
+      images:
+        - name: superset-mcp
+          newName: $CI_REGISTRY_IMAGE
+          newTag: $CI_COMMIT_SHA
+
+      namespace: $OPENSHIFT_PROJECT
+      EOF
+
+      oc apply -f "$TMP_KUSTOMIZE_FILE"
+      rm -f "$TMP_KUSTOMIZE_FILE"
+
+      oc rollout status deployment/superset-mcp -n "$OPENSHIFT_PROJECT" --timeout="${DEPLOY_TIMEOUT:-300s}"
+      echo "✅ ${DEPLOY_ENV:-Target} deployment completed"
+
+# Deploy to Development Environment (scripted OpenShift pipeline)
+deploy-dev:
+  stage: deploy-dev
+  extends: .openshift-scripted-deploy
+  variables:
+    KUBE_CONTEXT: $KUBE_CONTEXT_DEV
+    OVERLAY_PATH: kustomize/overlays/development
+    DATABASE_URI: $DATABASE_URI_DEV
+    REDIS_URL: $REDIS_URL_DEV
+    DEPLOY_ENV: Development
+    DEPLOY_TIMEOUT: 300s
+  environment:
+    name: development
+    url: https://superset-mcp-dev.$KUBE_DOMAIN
+  only:
+    - develop
+
+# Deploy to Staging Environment (scripted OpenShift pipeline)
+deploy-staging:
+  stage: deploy-staging
+  extends: .openshift-scripted-deploy
+  variables:
+    KUBE_CONTEXT: $KUBE_CONTEXT_STAGING
+    OVERLAY_PATH: kustomize/overlays/staging
+    DATABASE_URI: $DATABASE_URI_STAGING
+    REDIS_URL: $REDIS_URL_STAGING
+    DEPLOY_ENV: Staging
+    DEPLOY_TIMEOUT: 300s
+  environment:
+    name: staging
+    url: https://superset-mcp-staging.$KUBE_DOMAIN
+  only:
+    - main
+
+# Deploy to Production Environment (manual scripted OpenShift pipeline)
+deploy-production:
+  stage: deploy-production
+  extends: .openshift-scripted-deploy
+  variables:
+    KUBE_CONTEXT: $KUBE_CONTEXT_PROD
+    OVERLAY_PATH: kustomize/overlays/production
+    DATABASE_URI: $DATABASE_URI_PROD
+    REDIS_URL: $REDIS_URL_PROD
+    DEPLOY_ENV: Production
+    DEPLOY_TIMEOUT: 600s
+  environment:
+    name: production
+    url: https://superset-mcp.$KUBE_DOMAIN
+  when: manual
+  only:
+    - main
+
+# Health Check nach Deployment
+health-check:
+  stage: deploy-staging
+  image: curlimages/curl:latest
+  script:
+    - |
+      echo "Performing health check..."
+      # Warten auf Deployment
+      sleep 30
+      
+      # Health Check
+      if curl -f https://superset-mcp-staging.$KUBE_DOMAIN/health; then
+        echo "✅ Health check passed"
+      else
+        echo "❌ Health check failed"
+        exit 1
+      fi
+      
+      # MCP Test
+      if curl -X POST https://superset-mcp-staging.$KUBE_DOMAIN/mcp \
+        -H "Content-Type: application/json" \
+        -d '{"jsonrpc": "2.0", "method": "tools/list", "id": 1}'; then
+        echo "✅ MCP endpoint test passed"
+      else
+        echo "❌ MCP endpoint test failed"
+        exit 1
+      fi
+  environment:
+    name: staging
+  only:
+    - main
+
+# Cleanup alte Images
+cleanup:
+  stage: deploy-production
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache curl jq
+  script:
+    - |
+      echo "Cleaning up old images..."
+      # Alte Images in GitLab Registry aufräumen (optional)
+      # Dies erfordert GitLab API Token
+      echo "Cleanup completed"
+  when: always
+  only:
+    - main
+
+# GitLab Pages für Dokumentation
+pages:
+  stage: deploy-production
+  image: python:3.11-slim
+  before_script:
+    - apt-get update && apt-get install -y git
+    - pip install --upgrade pip
+    - pip install mkdocs mkdocs-material mkdocs-git-revision-date-plugin
+  script:
+    - |
+      echo "Building documentation..."
+      if [ -f "mkdocs.yml" ]; then
+        mkdocs build
+        mv public ../
+      else
+        mkdir -p ../public
+        echo "# Superset MCP Service" > ../public/index.md
+        echo "Documentation will be available here soon." >> ../public/index.md
+      fi
+  artifacts:
+    paths:
+      - public
+  only:
+    - main

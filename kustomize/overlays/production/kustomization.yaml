@@ -5,29 +5,12 @@ kind: Kustomization
 metadata:
   name: superset-mcp-production
 
-bases:
+resources:
   - ../../base
-
-patchesStrategicMerge:
-  - deployment-patch.yaml
   - networkpolicy.yaml
 
-commonLabels:
-  app.kubernetes.io/instance: superset-mcp-production
-  app.kubernetes.io/environment: production
-  app.kubernetes.io/security-level: "hardened"
-
-commonAnnotations:
-  app.kubernetes.io/variant: "production"
-  app.kubernetes.io/screenshots: "enabled"
-  app.kubernetes.io/monitoring: "prometheus"
-  app.kubernetes.io/security: "hardened"
-
-replicas:
-  - name: superset-mcp
-    count: 3
-
 patches:
+  - path: deployment-patch.yaml
   - target:
       kind: HorizontalPodAutoscaler
       name: superset-mcp-hpa
@@ -48,6 +31,23 @@ patches:
       - op: add
         path: /stringData/MCP_AUDIT_ENABLED
         value: "true"
+
+labels:
+  - includeSelectors: true
+    pairs:
+      app.kubernetes.io/instance: superset-mcp-production
+      app.kubernetes.io/environment: production
+      app.kubernetes.io/security-level: "hardened"
+
+commonAnnotations:
+  app.kubernetes.io/variant: "production"
+  app.kubernetes.io/screenshots: "enabled"
+  app.kubernetes.io/monitoring: "prometheus"
+  app.kubernetes.io/security: "hardened"
+
+replicas:
+  - name: superset-mcp
+    count: 3
 
 secretGenerator:
   - name: superset-mcp-secrets

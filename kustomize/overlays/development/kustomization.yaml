@@ -5,26 +5,11 @@ kind: Kustomization
 metadata:
   name: superset-mcp-development
 
-bases:
+resources:
   - ../../base
 
-patchesStrategicMerge:
-  - deployment-patch.yaml
-
-commonLabels:
-  app.kubernetes.io/instance: superset-mcp-development
-  app.kubernetes.io/environment: development
-
-commonAnnotations:
-  app.kubernetes.io/variant: "development"
-  app.kubernetes.io/screenshots: "enabled"
-  app.kubernetes.io/debug: "true"
-
-replicas:
-  - name: superset-mcp
-    count: 1
-
 patches:
+  - path: deployment-patch.yaml
   - target:
       kind: HorizontalPodAutoscaler
       name: superset-mcp-hpa
@@ -35,3 +20,18 @@ patches:
       - op: replace
         path: /spec/maxReplicas
         value: 2
+
+labels:
+  - includeSelectors: true
+    pairs:
+      app.kubernetes.io/instance: superset-mcp-development
+      app.kubernetes.io/environment: development
+
+commonAnnotations:
+  app.kubernetes.io/variant: "development"
+  app.kubernetes.io/screenshots: "enabled"
+  app.kubernetes.io/debug: "true"
+
+replicas:
+  - name: superset-mcp
+    count: 1

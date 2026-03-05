@@ -4,32 +4,57 @@ apiVersion: build.openshift.io/v1
 kind: BuildConfig
 metadata:
   name: superset-mcp
+  labels:
+    app: superset-mcp
+    app.kubernetes.io/name: superset-mcp
+    app.kubernetes.io/component: build
 spec:
   source:
     type: Git
     git:
-      uri: https://github.com/your-org/superset-mcp.git  # Replace with your repo
+      uri: https://gitlab.example.com/your-group/superset-mcp.git  # GitLab Repository
       ref: main
     contextDir: .
   strategy:
     type: Docker
     dockerStrategy:
       dockerfilePath: Dockerfile
+      buildArgs:
+        - name: SUPERSET_BASE_IMAGE
+          value: apache/superset:latest
   output:
     to:
       kind: ImageStreamTag
       name: superset-mcp:latest
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 2Gi
   triggers:
-    - type: GitHub
-      github:
-        secret: "your-webhook-secret"
+    # GitLab Webhook Trigger
+    - type: Generic
+      generic:
+        secret: "gitlab-webhook-secret"
+        allowEnv: true
+    # Config Change Trigger
     - type: ConfigChange
+    # Image Change Trigger
     - type: ImageChange
+  timeout: 300s
+  # Build Strategy Options
+  runPolicy: Serial
 ---
 apiVersion: image.openshift.io/v1
 kind: ImageStream
 metadata:
   name: superset-mcp
+  labels:
+    app: superset-mcp
+    app.kubernetes.io/name: superset-mcp
+    app.kubernetes.io/component: image
 spec:
   lookupPolicy:
     local: false

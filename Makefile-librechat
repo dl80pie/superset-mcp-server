@@ -175,22 +175,22 @@ EOF
 	@echo "🌐 LibreChat available at: http://localhost:3080"
 	@echo "🔗 Superset MCP URL: $(SUPERSET_MCP_URL)"
 
-# Deploy LibreChat with Superset MCP (Kubernetes)
+# Deploy LibreChat with Superset MCP (OpenShift)
 deploy-librechat-k8s:
-	@echo "Deploying LibreChat with Superset MCP to Kubernetes..."
+	@echo "Deploying LibreChat with Superset MCP to OpenShift..."
 	@if [ -z "$(SUPERSET_MCP_URL)" ]; then echo "❌ SUPERSET_MCP_URL environment variable not set"; exit 1; fi
 	@if [ -z "$(SUPERSET_MCP_PASSWORD)" ]; then echo "❌ SUPERSET_MCP_PASSWORD environment variable not set"; exit 1; fi
 	
-	# Create Kubernetes secret
-	@echo "Creating Kubernetes secret..."
-	kubectl create secret generic librechat-secrets \
+	# Create OpenShift secret
+	@echo "Creating OpenShift secret..."
+	oc create secret generic librechat-secrets \
 		--from-literal=superset-password=$(SUPERSET_MCP_PASSWORD) \
 		--from-literal=session-secret=$(openssl rand -base64 32) \
 		--from-literal=jwt-secret=$(openssl rand -base64 32) \
-		--dry-run=client -o yaml | kubectl apply -f -
+		--dry-run=client -o yaml | oc apply -f -
 	
-	# Create Kubernetes deployment
-	@echo "Creating Kubernetes deployment..."
+	# Create OpenShift deployment
+	@echo "Creating OpenShift deployment..."
 	cat > librechat-k8s.yaml << EOF
 apiVersion: apps/v1
 kind: Deployment
@@ -272,12 +272,12 @@ spec:
     app: librechat
 EOF
 	
-	# Apply Kubernetes manifests
-	kubectl apply -f librechat-k8s.yaml
+	# Apply OpenShift manifests
+	oc apply -f librechat-k8s.yaml
 	
-	@echo "✅ LibreChat deployed to Kubernetes!"
+	@echo "✅ LibreChat deployed to OpenShift!"
 	@echo "🌐 Getting LibreChat URL..."
-	kubectl get service librechat --timeout=60s
+	oc get service librechat --timeout=60s
 
 # Clean LibreChat deployment
 clean-librechat:
@@ -290,10 +290,10 @@ clean-librechat:
 		rm -f docker-compose.librechat.yml; \
 	fi
 	
-	# Clean Kubernetes
-	@if kubectl get deployment librechat >/dev/null 2>&1; then \
-		echo "Cleaning Kubernetes deployment..."; \
-		kubectl delete deployment,service,secret -l app=librechat; \
+	# Clean OpenShift
+	@if oc get deployment librechat >/dev/null 2>&1; then \
+		echo "Cleaning OpenShift deployment..."; \
+		oc delete deployment,service,secret -l app=librechat; \
 		rm -f librechat-k8s.yaml; \
 	fi
 	
@@ -317,12 +317,12 @@ status-librechat:
 		echo ""; \
 	fi
 	
-	# Kubernetes status
-	@if kubectl get deployment librechat >/dev/null 2>&1; then \
-		echo "Kubernetes Deployment:"; \
-		kubectl get pods -l app=librechat; \
+	# OpenShift status
+	@if oc get deployment librechat >/dev/null 2>&1; then \
+		echo "OpenShift Deployment:"; \
+		oc get pods -l app=librechat; \
 		echo ""; \
-		kubectl get service librechat; \
+		oc get service librechat; \
 		echo ""; \
 	fi
 	

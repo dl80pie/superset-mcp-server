@@ -1,0 +1,28 @@
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: superset-mcp-production
+  namespace: openshift-gitops
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  labels:
+    app.kubernetes.io/name: superset-mcp
+    app.kubernetes.io/part-of: argocd-gitops
+spec:
+  project: default
+  source:
+    repoURL: http://gitlab.home.lab/openshift/superset-mcp-server.git
+    targetRevision: main
+    path: kustomize/overlays/production
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: superset-mcp
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - PruneLast=true
+      - ApplyOutOfSyncOnly=true

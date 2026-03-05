@@ -14,8 +14,8 @@
 
 **Deployment**:
 ```bash
-make build ENV=minimal
-make deploy ENV=minimal
+make -f Makefile-kustomize build ENV=minimal
+make -f Makefile-kustomize deploy ENV=minimal
 ```
 
 ---
@@ -33,8 +33,8 @@ make deploy ENV=minimal
 
 **Deployment**:
 ```bash
-make build ENV=with-selenium
-make deploy ENV=with-selenium
+make -f Makefile-kustomize build ENV=with-selenium
+make -f Makefile-kustomize deploy ENV=with-selenium
 ```
 
 ---
@@ -52,8 +52,8 @@ make deploy ENV=with-selenium
 
 **Deployment**:
 ```bash
-make build ENV=development
-make deploy ENV=development
+make -f Makefile-kustomize build ENV=development
+make -f Makefile-kustomize deploy ENV=development
 ```
 
 ---
@@ -71,8 +71,8 @@ make deploy ENV=development
 
 **Deployment**:
 ```bash
-make build ENV=staging
-make deploy ENV=staging
+make -f Makefile-kustomize build ENV=staging
+make -f Makefile-kustomize deploy ENV=staging
 ```
 
 ---
@@ -91,8 +91,8 @@ make deploy ENV=staging
 
 **Deployment**:
 ```bash
-make build ENV=production
-make deploy ENV=production
+make -f Makefile-kustomize build ENV=production
+make -f Makefile-kustomize deploy ENV=production
 ```
 
 ---
@@ -191,6 +191,11 @@ make -f Makefile-kustomize list-envs
 ### Manifeste prüfen
 ```bash
 make -f Makefile-kustomize build ENV=production | less
+```
+
+### Direkt mit oc kustomize prüfen
+```bash
+oc kustomize kustomize/overlays/production > /dev/null
 ```
 
 ### Diff anzeigen

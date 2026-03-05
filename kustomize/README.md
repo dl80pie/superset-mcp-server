@@ -1,6 +1,6 @@
 # Kustomize Konfiguration für Superset MCP Service
 
-> **Declarative Kubernetes Configuration Management mit Kustomize**
+> **Declarative OpenShift Configuration Management mit Kustomize**
 
 ## 📁 Verzeichnisstruktur
 
@@ -11,29 +11,23 @@ kustomize/
 │   ├── service.yaml
 │   ├── route.yaml
 │   ├── hpa.yaml
-│   ├── configmap.yaml
 │   ├── secret.yaml
 │   └── kustomization.yaml
 ├── overlays/                      # Environment-spezifische Overlays
 │   ├── minimal/                   # Minimal-Version (ohne Screenshots)
 │   │   ├── deployment-patch.yaml
-│   │   ├── secret-patch.yaml
 │   │   └── kustomization.yaml
 │   ├── with-selenium/            # Mit Selenium/Chrome
 │   │   ├── deployment-patch.yaml
-│   │   ├── secret-patch.yaml
 │   │   └── kustomization.yaml
 │   ├── development/              # Development Environment
 │   │   ├── deployment-patch.yaml
-│   │   ├── secret-patch.yaml
 │   │   └── kustomization.yaml
 │   ├── staging/                  # Staging Environment
 │   │   ├── deployment-patch.yaml
-│   │   ├── secret-patch.yaml
 │   │   └── kustomization.yaml
 │   └── production/               # Production Environment
 │       ├── deployment-patch.yaml
-│       ├── secret-patch.yaml
 │       ├── networkpolicy.yaml
 │       └── kustomization.yaml
 └── README.md
@@ -43,17 +37,17 @@ kustomize/
 
 ### Minimal Deployment
 ```bash
-kustomize build kustomize/overlays/minimal | kubectl apply -f -
+oc kustomize kustomize/overlays/minimal | oc apply -f -
 ```
 
 ### Mit Selenium Support
 ```bash
-kustomize build kustomize/overlays/with-selenium | kubectl apply -f -
+oc kustomize kustomize/overlays/with-selenium | oc apply -f -
 ```
 
 ### Production Deployment
 ```bash
-kustomize build kustomize/overlays/production | kubectl apply -f -
+oc kustomize kustomize/overlays/production | oc apply -f -
 ```
 
 ## 🔧 Konfiguration
@@ -101,8 +95,8 @@ Kustomize unterstützt verschiedene Secret-Strategien:
 # Neues Overlay erstellen
 mkdir -p kustomize/overlays/my-environment
 
-# Basis-Konfiguration kopieren
-cp kustomize/overlays/minimal/* kustomize/overlays/my-environment/
+# Basis-Overlay kopieren
+cp kustomize/overlays/staging/* kustomize/overlays/my-environment/
 
 # Anpassen
 vim kustomize/overlays/my-environment/deployment-patch.yaml
@@ -113,62 +107,59 @@ vim kustomize/overlays/my-environment/kustomization.yaml
 
 ### Build only (Preview)
 ```bash
-kustomize build kustomize/overlays/production
+oc kustomize kustomize/overlays/production
 ```
 
 ### Build und Apply
 ```bash
-kustomize build kustomize/overlays/production | kubectl apply -f -
+oc kustomize kustomize/overlays/production | oc apply -f -
 ```
 
 ### Build mit Output
 ```bash
-kustomize build kustomize/overlays/production -o yaml > production-manifest.yaml
+oc kustomize kustomize/overlays/production > production-manifest.yaml
 ```
 
 ### Diff anzeigen
 ```bash
-kustomize build kustomize/overlays/production | kubectl diff -f -
+oc kustomize kustomize/overlays/production | oc diff -f -
 ```
 
 ## 🔍 Validierung
 
 ```bash
-# Kustomize Syntax prüfen
-kustomize build kustomize/overlays/production --validate
-
-# Kubernetes Ressourcen validieren
-kustomize build kustomize/overlays/production | kubeval
+# Kustomize Rendering prüfen
+oc kustomize kustomize/overlays/production > /dev/null
 
 # Dry-Run Apply
-kustomize build kustomize/overlays/production | kubectl apply --dry-run=client -f -
+oc kustomize kustomize/overlays/production | oc apply --dry-run=client -f -
 ```
 
 ## 📈 Monitoring
 
 ```bash
 # Deployment Status
-kubectl get deployment -l app=superset-mcp
+oc get deployment -l app=superset-mcp
 
 # Pods Status
-kubectl get pods -l app=superset-mcp
+oc get pods -l app=superset-mcp
 
 # HPA Status
-kubectl get hpa superset-mcp-hpa
+oc get hpa superset-mcp-hpa
 
 # Events
-kubectl get events --field-selector involvedObject.name=superset-mcp
+oc get events --field-selector involvedObject.name=superset-mcp
 ```
 
 ## 🔄 Updates
 
 ```bash
 # Rolling Update
-kustomize build kustomize/overlays/production | kubectl apply -f -
-kubectl rollout status deployment/superset-mcp
+oc kustomize kustomize/overlays/production | oc apply -f -
+oc rollout status deployment/superset-mcp
 
 # Rollback
-kubectl rollout undo deployment/superset-mcp
+oc rollout undo deployment/superset-mcp
 ```
 
 ## 🚨 Troubleshooting
@@ -176,22 +167,22 @@ kubectl rollout undo deployment/superset-mcp
 ### Kustomize Issues
 ```bash
 # Debug Build
-kustomize build kustomize/overlays/production --verbose
+oc kustomize kustomize/overlays/production
 
 # Check Resources
-kustomize build kustomize/overlays/production | grep -E "kind:|metadata:"
+oc kustomize kustomize/overlays/production | grep -E "kind:|metadata:"
 ```
 
-### Kubernetes Issues
+### OpenShift Issues
 ```bash
 # Pod Logs
-kubectl logs -l app=superset-mcp
+oc logs -l app=superset-mcp
 
 # Describe Pod
-kubectl describe pod -l app=superset-mcp
+oc describe pod -l app=superset-mcp
 
 # Events
-kubectl get events --sort-by='.lastTimestamp'
+oc get events --sort-by='.lastTimestamp'
 ```
 
 ## 📚 Best Practices
