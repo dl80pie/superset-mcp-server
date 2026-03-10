@@ -1,0 +1,36 @@
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: superset-mcp-server
+  namespace: superset-mcp
+  labels:
+    app: superset-mcp-server
+spec:
+  source:
+    type: Git
+    git:
+      uri: "https://github.com/aptro/superset-mcp.git"
+      ref: main
+    contextDir: "."
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: Dockerfile.ubi9
+      from:
+        kind: DockerImage
+        name: harbor.pietsch.uk/redhat/ubi9/python-311:latest
+  output:
+    to:
+      kind: ImageStreamTag
+      name: superset-mcp-server:latest
+  triggers:
+    - type: ConfigChange
+---
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  name: superset-mcp-server
+  namespace: superset-mcp
+spec:
+  lookupPolicy:
+    local: true
