@@ -1,7 +1,7 @@
 # RHEL UBI9-based Dockerfile for Superset MCP Server
 # This image is designed for OpenShift deployment with proper security context support
 
-FROM harbor.pietsch.uk/redhat/ubi9/python-311:latest
+FROM registry.redhat.io/ubi9/python-311:latest
 
 USER 0
 
