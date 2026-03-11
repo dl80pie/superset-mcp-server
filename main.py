@@ -114,51 +114,21 @@ async def superset_lifespan(server: FastMCP) -> AsyncIterator[SupersetContext]:
     # Create context
     ctx = SupersetContext(client=client, base_url=SUPERSET_BASE_URL, app=app)
 
-    # Try to load token from environment variable first, then from stored file
+    # Load token from environment variable first, then from stored file
+    # NOTE: We do NOT verify the token during startup to avoid blocking
+    # Token verification happens lazily on first API call
     env_token = SUPERSET_ACCESS_TOKEN
     if env_token:
         ctx.access_token = env_token
         client.headers.update({"Authorization": f"Bearer {env_token}"})
         logger.info("Using access token from SUPERSET_ACCESS_TOKEN environment variable")
-        
-        # Verify token validity
-        try:
-            response = await client.get("/api/v1/me/")
-            if response.status_code != 200:
-                logger.info(
-                    f"Environment token is invalid (status {response.status_code}). Will try stored token."
-                )
-                ctx.access_token = None
-                client.headers.pop("Authorization", None)
-            else:
-                yield ctx
-                return
-        except Exception as e:
-            logger.info(f"Error verifying environment token: {e}")
-            ctx.access_token = None
-            client.headers.pop("Authorization", None)
-    
-    # Try to load existing token from file
-    stored_token = load_stored_token()
-    if stored_token:
-        ctx.access_token = stored_token
-        # Set the token in the client headers
-        client.headers.update({"Authorization": f"Bearer {stored_token}"})
-        logger.info("Using stored access token")
-
-        # Verify token validity
-        try:
-            response = await client.get("/api/v1/me/")
-            if response.status_code != 200:
-                logger.info(
-                    f"Stored token is invalid (status {response.status_code}). Will need to re-authenticate."
-                )
-                ctx.access_token = None
-                client.headers.pop("Authorization", None)
-        except Exception as e:
-            logger.info(f"Error verifying stored token: {e}")
-            ctx.access_token = None
-            client.headers.pop("Authorization", None)
+    else:
+        # Try to load existing token from file (without verification)
+        stored_token = load_stored_token()
+        if stored_token:
+            ctx.access_token = stored_token
+            client.headers.update({"Authorization": f"Bearer {stored_token}"})
+            logger.info("Using stored access token (not verified during startup)")
 
     try:
         yield ctx
