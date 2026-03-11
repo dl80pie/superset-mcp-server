@@ -1,0 +1,94 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: superset-mcp-server
+  namespace: superset-mcp
+  labels:
+    app: superset-mcp-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: superset-mcp-server
+  template:
+    metadata:
+      labels:
+        app: superset-mcp-server
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: superset-mcp-server
+          image: harbor.pietsch.uk/library/superset-mcp:aptro
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3001
+              protocol: TCP
+          env:
+            - name: SUPERSET_BASE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: superset-mcp-config
+                  key: SUPERSET_BASE_URL
+            - name: SUPERSET_ACCESS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: superset-mcp-credentials
+                  key: SUPERSET_ACCESS_TOKEN
+                  optional: true
+            - name: SUPERSET_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: superset-mcp-credentials
+                  key: SUPERSET_USERNAME
+                  optional: true
+            - name: SUPERSET_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: superset-mcp-credentials
+                  key: SUPERSET_PASSWORD
+                  optional: true
+            - name: ACCESS_TOKEN_STORE_PATH
+              value: "/tmp/.superset_token"
+            - name: HOME
+              value: "/tmp"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            runAsNonRoot: true
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3001
+              scheme: HTTP
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3001
+              scheme: HTTP
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          volumeMounts:
+            - name: tmp-volume
+              mountPath: /tmp
+      volumes:
+        - name: tmp-volume
+          emptyDir: {}

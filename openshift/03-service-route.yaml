@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: superset-mcp-server
+  namespace: superset-mcp
+  labels:
+    app: superset-mcp-server
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 3001
+      targetPort: 3001
+      protocol: TCP
+  selector:
+    app: superset-mcp-server
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: superset-mcp-server
+  namespace: superset-mcp
+  labels:
+    app: superset-mcp-server
+spec:
+  host: ""
+  # TLS termination at the edge (OpenShift router)
+  # Adjust tls settings based on your cluster's SSL configuration
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+  to:
+    kind: Service
+    name: superset-mcp-server
+  port:
+    targetPort: http

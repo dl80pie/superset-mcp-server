@@ -1,0 +1,47 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-librechat-access
+  namespace: superset-mcp
+spec:
+  podSelector:
+    matchLabels:
+      app: superset-mcp-server
+  policyTypes:
+    - Ingress
+  ingress:
+    # Erlaube Zugriff vom LibreChat Namespace
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: librechat  # <-- Anpassen: LibreChat Namespace
+      ports:
+        - protocol: TCP
+          port: 3001
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-superset-access
+  namespace: superset-mcp
+spec:
+  podSelector:
+    matchLabels:
+      app: superset-mcp-server
+  policyTypes:
+    - Egress
+  egress:
+    # Erlaube ausgehenden Traffic zur Superset API
+    - to:
+        - namespaceSelector: {}
+          # Falls Superset in einem bestimmten Namespace läuft, anpassen:
+          # namespaceSelector:
+          #   matchLabels:
+          #     kubernetes.io/metadata.name: superset
+      ports:
+        - protocol: TCP
+          port: 8088  # HTTP
+        - protocol: TCP
+          port: 8443  # HTTPS
+        - protocol: TCP
+          port: 443   # Standard HTTPS
