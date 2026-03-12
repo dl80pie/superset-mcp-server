@@ -11,7 +11,6 @@ from typing import (
 )
 import os
 import httpx
-import asyncio
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from functools import wraps
@@ -156,58 +155,20 @@ sse_transport = SseServerTransport("/messages/")
 @app.get("/sse")
 async def handle_sse(request: Request):
     """SSE endpoint for MCP communication"""
-    from starlette.responses import StreamingResponse
-    
-    async def event_generator():
-        async with sse_transport.connect_sse(
-            request.scope, request.receive, request._send
-        ) as (read_stream, write_stream):
-            await mcp._mcp_server.run(
-                read_stream,
-                write_stream,
-                mcp._mcp_server.create_initialization_options(),
-            )
-            # Keep connection alive
-            while True:
-                yield b""
-                await asyncio.sleep(60)
-    
-    return StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-        },
-    )
+    async with sse_transport.connect_sse(
+        request.scope, request.receive, request._send
+    ) as (read_stream, write_stream):
+        await mcp._mcp_server.run(
+            read_stream,
+            write_stream,
+            mcp._mcp_server.create_initialization_options(),
+        )
 
 @app.post("/messages/")
 async def handle_messages(request: Request):
     """Message endpoint for MCP communication"""
-    from starlette.requests import Request as StarletteRequest
-    # Use the standard Starlette handling
-    body = await request.body()
-    
-    # Create a new scope with the body for the transport
-    scope = dict(request.scope)
-    
-    async def receive():
-        return {"type": "http.request", "body": body, "more_body": False}
-    
-    # Get the response from the transport
-    response_body = b""
-    async def send(message):
-        nonlocal response_body
-        if message.get("type") == "http.response.body":
-            response_body = message.get("body", b"")
-    
-    await sse_transport.handle_post_message(scope, receive, send)
-    
-    from starlette.responses import Response
-    return Response(
-        content=response_body,
-        status_code=200,
-        media_type="application/json",
+    return await sse_transport.handle_post_message(
+        request.scope, request.receive, request._send
     )
 
 
