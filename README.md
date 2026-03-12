@@ -54,6 +54,68 @@ npx -y @smithery/cli install @aptro/superset-mcp --client claude
    mcp install main.py
    ```
 
+## LibreChat Integration
+
+This MCP server can be integrated with [LibreChat](https://www.librechat.ai/) to enable AI conversations with your Superset data.
+
+### Configuration
+
+Add the following to your `librechat.yaml` configuration file:
+
+**Option A: Direct stdio transport (recommended for local deployment)**
+```yaml
+mcpServers:
+  superset:
+    command: python
+    args: ["/path/to/superset-mcp-server/main.py"]
+    env:
+      SUPERSET_BASE_URL: "https://your-superset-instance.com"
+      SUPERSET_USERNAME: "admin"
+      SUPERSET_PASSWORD: "your-password"
+    timeout: 60000
+```
+
+**Option B: SSE transport (for remote/container deployment)**
+```yaml
+mcpServers:
+  superset:
+    url: https://your-mcp-server-domain.com/sse
+    timeout: 60000
+```
+
+### Important Configuration Notes
+
+- **SUPERSET_BASE_URL**: Your Superset instance URL (without trailing slash)
+- **SUPERSET_USERNAME** / **SUPERSET_PASSWORD**: Credentials for Superset authentication
+- **timeout**: Increased to 60 seconds to handle initial authentication
+- **API endpoints**: Always use trailing slashes (e.g., `/api/v1/dashboard/` not `/api/v1/dashboard`)
+
+### Troubleshooting LibreChat Integration
+
+| Issue | Solution |
+|-------|----------|
+| `Server initialization timed out` | Increase `timeout` value; ensure server starts without blocking operations |
+| `Not authenticated` | First run: say "Authenticate with Superset" or credentials missing in config |
+| `http.response.start` ASGI error | Update to latest server version; restart LibreChat |
+| HTTP 503 errors | Check Superset URL; ensure trailing slash on API endpoints |
+
+### Docker Deployment for LibreChat
+
+Build and run the MCP server container:
+
+```bash
+# Build image
+docker build -f Dockerfile.ubi9 -t superset-mcp-server:latest .
+
+# Run with environment variables
+docker run -d \
+  -p 3001:3001 \
+  -e SUPERSET_BASE_URL=https://superset.example.com \
+  -e SUPERSET_USERNAME=admin \
+  -e SUPERSET_PASSWORD=secret \
+  superset-mcp-server:latest
+```
+
 ## Usage with Claude
 
 After setup, you can interact with your Superset instance via Claude using natural language requests. Here are some examples:
